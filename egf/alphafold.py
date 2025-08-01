@@ -523,12 +523,12 @@ class AlphaFold:
 #                    ):
 #                        f.write(
 #                            f"{intermediate_index}\t{intermediate_structure['true_plddt']:.3f}\t{intermediate_structure['tmscore']:.3f}\n"
- #                       )
+#                       )
 #                intermediate_paths[tag] = curr_intermediate_paths
 #
- #               p1, p2 = (
- #                   self.tag_cluster_mapping[tag][0],
- #                   self.tag_cluster_mapping[tag][1],
+#               p1, p2 = (
+#                   self.tag_cluster_mapping[tag][0],
+#                   self.tag_cluster_mapping[tag][1],
 #                )
 #                if p1 is not None:
 #                    download_structure(p1, data_dirs["structure_dir"])
@@ -562,16 +562,16 @@ class AlphaFold:
 #                    tag,
 #                )
 #
-  #              # Toss out the recycling dimensions --- we don't need them anymore
- #  #             logger.info(f"Output written to {unrelaxed_output_path}...")
-     #           if self.args.save_outputs:
-   #                 output_dict_path = os.path.join(
-       #                 output_dir_base, f"{tag}_output_dict.pkl"
-      #              )
-         #           with open(output_dict_path, "wb") as fp:
-        #                pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
+#              # Toss out the recycling dimensions --- we don't need them anymore
+#             logger.info(f"Output written to {unrelaxed_output_path}...")
+#           if self.args.save_outputs:
+#                 output_dict_path = os.path.join(
+#                 output_dir_base, f"{tag}_output_dict.pkl"
+#              )
+#           with open(output_dict_path, "wb") as fp:
+#                pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
 #
- #                   logger.info(f"Model output written to {output_dict_path}...")
+#                   logger.info(f"Model output written to {output_dict_path}...")
         return output_paths
 
 
