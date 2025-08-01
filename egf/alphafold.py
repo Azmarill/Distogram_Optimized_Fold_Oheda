@@ -378,42 +378,26 @@ class AlphaFold:
                 tag,
                 self.args.cif_output,
             )
+      # egf/alphafold.py の run メソッド全体を以下に置き換える
 
     def run(self, input_dict, data_dirs):
-        gt_structures = {"p1": self.full_config.base.p1, "p2": self.full_config.base.p2}
         # Create the output directory
-        os.makedirs(data_dirs["output_dir"], exist_ok=True)
         output_dir_base = data_dirs["output_dir"]
-        if not os.path.exists(output_dir_base):
-            os.makedirs(output_dir_base)
-
-        tag_list = []
-        seq_list = []
-        for key, value in input_dict.items():
-            tag_list.append(key)
-            seq_list.append(value)
-
-        seq_sort_fn = lambda target: sum([len(s) for s in target[1]])
-        sorted_targets = sorted(zip(tag_list, seq_list), key=seq_sort_fn)
+        os.makedirs(output_dir_base, exist_ok=True)
+    
         output_paths = {}
-        intermediate_paths = {}
         for model, _ in self.model_generator:
+            # Save config for reproducibility
             config_output_path = os.path.join(output_dir_base, "config.yaml")
             with open(config_output_path, "w") as f:
                 OmegaConf.save(model.guide_config, f)
-
-            model.device_group = (
-                self.guide_config.device_group
-                if self.guide_config.device_group is not None
-                else None
-            )
-            for fasta_filename, fasta_content in input_dict.items():
-                # FASTAの中身をパースして、正しい鎖タグと配列のリストを取得
-                tags, seqs = parse_fasta(fasta_content)
-                
+    
+            # --- ここからが新しいループ ---
+            # input_dictからFASTAのファイル名と、(タグリスト, 配列リスト)を取り出してループ
+            for fasta_tag, (tags, seqs) in input_dict.items():
                 # 複合体全体のタグを作成
                 tag = "-".join(tags)
-
+    
                 # 処理対象か確認
                 if self.tag_cluster_mapping is not None and tag not in self.tag_cluster_mapping:
                     print(f"Skipping {tag} as it's not in the tag_cluster_mapping.json")
@@ -431,17 +415,17 @@ class AlphaFold:
                     and self.guide_config.skip_existing
                 ):
                     continue
-
-                # 正しい鎖タグのリスト(tags)をpreprocessに渡す
+    
+                # preprocessに正しい変数を渡す
                 feature_dict, processed_feature_dict = self.preprocess(
                     tag, tags, seqs, data_dirs
                 )
-
+    
                 # モデルの実行
                 out, intermediate_outputs, intermediate_metrics = run_model(
                     model, processed_feature_dict, tag, output_dir_base
                 )
-
+    
                 # 中間ファイルやメトリクスの保存
                 if self.guide_config.info_dir is not None:
                     os.makedirs(self.guide_config.info_dir, exist_ok=True)
@@ -450,9 +434,7 @@ class AlphaFold:
                     )
                     with open(metrics_save_path, "w") as f:
                         json.dump(intermediate_metrics, f)
-                    
-                    # 中間構造の保存など、必要に応じて元のコードから処理をここに移植
-                
+    
                 # 最終的な構造の保存
                 self.postprocess(
                     feature_dict,
@@ -463,9 +445,147 @@ class AlphaFold:
                     tag,
                 )
                 logger.info(f"Output written to {unrelaxed_output_path}...")
+        
+        return output_paths
+
+    # def run(self, input_dict, data_dirs):
+    #     gt_structures = {"p1": self.full_config.base.p1, "p2": self.full_config.base.p2}
+    #     # Create the output directory
+    #     os.makedirs(data_dirs["output_dir"], exist_ok=True)
+    #     output_dir_base = data_dirs["output_dir"]
+    #     if not os.path.exists(output_dir_base):
+    #         os.makedirs(output_dir_base)
+
+    #     tag_list = []
+    #     seq_list = []
+    #     for key, value in input_dict.items():
+    #         tag_list.append(key)
+    #         seq_list.append(value)
+
+    #     seq_sort_fn = lambda target: sum([len(s) for s in target[1]])
+    #     sorted_targets = sorted(zip(tag_list, seq_list), key=seq_sort_fn)
+    #     output_paths = {}
+    #     intermediate_paths = {}
+    #     for fasta_tag, (tags, seqs) in input_dict.items():
+    #         # 複合体全体のタグを作成
+    #         tag = "-".join(tags)
+
+    #         # 処理対象か確認
+    #         if self.tag_cluster_mapping is not None and tag not in self.tag_cluster_mapping:
+    #             print(f"Skipping {tag} as it's not in the tag_cluster_mapping.json")
+    #             continue
+            
+    #         print(f"INFO: Processing target {tag}")
+            
+    #         random_seed(self.args.data_random_seed)
+    #         unrelaxed_output_path = os.path.join(
+    #             output_dir_base,
+    #             f"{tag}.cif" if self.args.cif_output else f"{tag}.pdb",
+    #         )
+    #         if (
+    #             os.path.exists(unrelaxed_output_path)
+    #             and self.guide_config.skip_existing
+    #         ):
+    #             continue
+
+    #         # preprocessに正しい変数を渡す
+    #         feature_dict, processed_feature_dict = self.preprocess(
+    #             tag, tags, seqs, data_dirs
+    #         )
+
+    #         # モデルの実行
+    #         out, intermediate_outputs, intermediate_metrics = run_model(
+    #             model, processed_feature_dict, tag, output_dir_base
+    #         )
+
+    #         # 中間ファイルやメトリクスの保存
+    #         if self.guide_config.info_dir is not None:
+    #             os.makedirs(self.guide_config.info_dir, exist_ok=True)
+    #             metrics_save_path = os.path.join(
+    #                 self.guide_config.info_dir, f"{tag}_metrics.json"
+    #             )
+    #             with open(metrics_save_path, "w") as f:
+    #                 json.dump(intermediate_metrics, f)
+            
+    #         # 最終的な構造の保存
+    #         self.postprocess(
+    #             feature_dict,
+    #             processed_feature_dict,
+    #             out,
+    #             unrelaxed_output_path,
+    #             output_dir_base,
+    #             tag,
+    #         )
+    #         logger.info(f"Output written to {unrelaxed_output_path}...")
+        # for model, _ in self.model_generator:
+        #     config_output_path = os.path.join(output_dir_base, "config.yaml")
+        #     with open(config_output_path, "w") as f:
+        #         OmegaConf.save(model.guide_config, f)
+
+        #     model.device_group = (
+        #         self.guide_config.device_group
+        #         if self.guide_config.device_group is not None
+        #         else None
+        #     )
+        #     for fasta_filename, fasta_content in input_dict.items():
+        #         # FASTAの中身をパースして、正しい鎖タグと配列のリストを取得
+        #         tags, seqs = parse_fasta(fasta_content)
+                
+        #         # 複合体全体のタグを作成
+        #         tag = "-".join(tags)
+
+        #         # 処理対象か確認
+        #         if self.tag_cluster_mapping is not None and tag not in self.tag_cluster_mapping:
+        #             print(f"Skipping {tag} as it's not in the tag_cluster_mapping.json")
+        #             continue
+                
+        #         print(f"INFO: Processing target {tag}")
+                
+        #         random_seed(self.args.data_random_seed)
+        #         unrelaxed_output_path = os.path.join(
+        #             output_dir_base,
+        #             f"{tag}.cif" if self.args.cif_output else f"{tag}.pdb",
+        #         )
+        #         if (
+        #             os.path.exists(unrelaxed_output_path)
+        #             and self.guide_config.skip_existing
+        #         ):
+        #             continue
+
+        #         # 正しい鎖タグのリスト(tags)をpreprocessに渡す
+        #         feature_dict, processed_feature_dict = self.preprocess(
+        #             tag, tags, seqs, data_dirs
+        #         )
+
+        #         # モデルの実行
+        #         out, intermediate_outputs, intermediate_metrics = run_model(
+        #             model, processed_feature_dict, tag, output_dir_base
+        #         )
+
+        #         # 中間ファイルやメトリクスの保存
+        #         if self.guide_config.info_dir is not None:
+        #             os.makedirs(self.guide_config.info_dir, exist_ok=True)
+        #             metrics_save_path = os.path.join(
+        #                 self.guide_config.info_dir, f"{tag}_metrics.json"
+        #             )
+        #             with open(metrics_save_path, "w") as f:
+        #                 json.dump(intermediate_metrics, f)
+                    
+        #             # 中間構造の保存など、必要に応じて元のコードから処理をここに移植
+                
+        #         # 最終的な構造の保存
+        #         self.postprocess(
+        #             feature_dict,
+        #             processed_feature_dict,
+        #             out,
+        #             unrelaxed_output_path,
+        #             output_dir_base,
+        #             tag,
+        #         )
+        #         logger.info(f"Output written to {unrelaxed_output_path}...")
 #            for tag, seqs in sorted_targets:
 #                tags = self.tag_cluster_mapping[tag]
-
+#
 #                random_seed(self.args.data_random_seed)
 #                unrelaxed_output_path = os.path.join(
 #                    output_dir_base,
@@ -492,12 +612,12 @@ class AlphaFold:
 #                os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
 #                with open(metrics_save_path, "w") as f:
 #                    json.dump(intermediate_metrics, f)
-
+#
 #                for intermediate_index, intermediate_structure in enumerate(
 #                    intermediate_outputs
 #                ):
 #                    os.makedirs(self.guide_config.info_dir, exist_ok=True)
-
+#
 #                    intermediate_path = os.path.join(
 #                        self.guide_config.info_dir,
 #                        f"{tag}_int_{intermediate_index}.pdb",
@@ -534,7 +654,7 @@ class AlphaFold:
 #                    download_structure(p1, data_dirs["structure_dir"])
 #                if p2 is not None:
 #                    download_structure(p2, data_dirs["structure_dir"])
-
+#
 #                if (
 #                    self.guide_config.plot_rmsd_path
 #                    and p1 is not None
@@ -572,7 +692,7 @@ class AlphaFold:
 #                pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
 #
 #                   logger.info(f"Model output written to {output_dict_path}...")
-        return output_paths
+#        return output_paths
 
 
 def get_base_model(config):
