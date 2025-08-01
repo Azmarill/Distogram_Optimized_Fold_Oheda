@@ -51,6 +51,7 @@ def load_models_from_command_line(
     jax_param_path,
     output_dir,
     guide_config,
+    guide_config=None
 ):
     # Create the output directory
 
