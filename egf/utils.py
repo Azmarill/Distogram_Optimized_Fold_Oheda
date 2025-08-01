@@ -46,22 +46,39 @@ def list_files_with_extensions(dir, extensions):
 
 # egf/utils.py の load_fasta_sequences 関数を以下に置き換え
 
+# def load_fasta_sequences(fasta_dir: str) -> dict:
+#     """
+#     指定されたディレクトリ内のFASTAファイルを読み込む。
+#     ファイル内に1つの配列しかない場合は単量体として、
+#     複数の配列がある場合は多量体として扱う。
+#     """
+#     input_dict = {}
+#     for fasta_file in glob.glob(os.path.join(fasta_dir, "*.fasta")):
+#         with open(fasta_file, "r") as f:
+#             data = f.read()
+
+#         # OpenFoldの高性能なパーサーを使用
+#         tags, seqs = parse_fasta(data)
+
+#         # ファイル名(拡張子なし)を複合体のメインタグとして使用
+#         main_tag = os.path.splitext(os.path.basename(fasta_file))[0]
+#         input_dict[main_tag] = (tags, seqs)
+#     return input_dict
+
+import glob
+import os
+
 def load_fasta_sequences(fasta_dir: str) -> dict:
     """
-    指定されたディレクトリ内のFASTAファイルを読み込む。
-    ファイル内に1つの配列しかない場合は単量体として、
-    複数の配列がある場合は多量体として扱う。
+    指定されたディレクトリ内のFASTAファイルを読み込み、
+    {ファイル名: ファイルの中身（文字列）} の辞書を返す
     """
     input_dict = {}
     for fasta_file in glob.glob(os.path.join(fasta_dir, "*.fasta")):
         with open(fasta_file, "r") as f:
             data = f.read()
-
-        # OpenFoldの高性能なパーサーを使用
-        tags, seqs = parse_fasta(data)
-
-        # ファイル名(拡張子なし)を複合体のメインタグとして使用
+        
         main_tag = os.path.splitext(os.path.basename(fasta_file))[0]
-        input_dict[main_tag] = (tags, seqs)
-
+        input_dict[main_tag] = data
+            
     return input_dict
