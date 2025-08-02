@@ -42,44 +42,36 @@ def make_output_directory(output_dir, model_name, multiple_model_mode):
         prediction_dir = os.path.join(output_dir, "predictions")
     os.makedirs(prediction_dir, exist_ok=True)
     return prediction_dir
-    
+
+# openfold/utils/script_utils.py の load_models_from_command_line 関数を置き換え
+
 def load_models_from_command_line(
-    config,
-    model_device,
-    openfold_checkpoint_path,
-    jax_param_path,
-    output_dir,
-    guide_config=None, # guide_configを受け取れるようにする
+    args,                # 'base'セクションの設定全体
+    config,              # model_config() からのモデル詳細設定
+    guide_config=None
 ):
-    """
-    Load models from command line arguments.
-    """
+    model_device = args.model_device
+    jax_param_path = args.jax_param_path
+    openfold_checkpoint_path = args.openfold_checkpoint_path
+    output_dir = args.output_dir if hasattr(args, 'output_dir') else ""
+
     if(model_device == "cpu"):
         fp16 = False
         bf16 = False
-    elif(model_device == "cuda"):
-        try:
-            if(torch.cuda.is_bf16_supported()):
-                bf16 = True
-                fp16 = False
-            else:
-                bf16 = False
-                fp16 = True
-        except:
-            bf16 = False
-            fp16 = True
     else:
-        # MPS, etc.
-        fp16 = False
+        # (FP16/BF16の自動設定ロジックは元のまま)
+        fp16 = True
         bf16 = False
-
+        if(torch.cuda.is_bf16_supported()):
+            bf16 = True
+            fp16 = False
+            
     if(jax_param_path is None and openfold_checkpoint_path is None):
         raise ValueError(
             "At least one of jax_param_path or openfold_checkpoint_path must be specified."
         )
 
-    # model = AlphaFold(config) # 古い初期化方法
-    model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
+    model = AlphaFold(config, guide_config=guide_config)
 
     if(openfold_checkpoint_path is not None):
         d = torch.load(openfold_checkpoint_path)
@@ -95,23 +87,91 @@ def load_models_from_command_line(
     model = model.to(model_device)
     
     if(jax_param_path is not None):
-        # sanity check
-        if("model_" in config.preset):
-            model_version = "_".join(config.preset.split("_")[1:])
+        model_preset = args.config_preset # presetはargsから取得
+        if("model_" in model_preset):
+            model_version = "_".join(model_preset.split("_")[1:])
         else:
-            model_version = config.preset
+            model_version = model_preset
         
-        # It's not a multimer model, but this is how we get the name
-        if(not config.is_multimer):
+        if(not config.model.is_multimer):
             model_version = model_version.replace('ptm', 'ptm')
         
         import_jax_weights_(
             model, jax_param_path, version=model_version
         )
-
-    logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
+        logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
     
     yield model, output_dir
+    
+# def load_models_from_command_line(
+#     config,
+#     model_device,
+#     openfold_checkpoint_path,
+#     jax_param_path,
+#     output_dir,
+#     guide_config=None, # guide_configを受け取れるようにする
+# ):
+#     """
+#     Load models from command line arguments.
+#     """
+#     if(model_device == "cpu"):
+#         fp16 = False
+#         bf16 = False
+#     elif(model_device == "cuda"):
+#         try:
+#             if(torch.cuda.is_bf16_supported()):
+#                 bf16 = True
+#                 fp16 = False
+#             else:
+#                 bf16 = False
+#                 fp16 = True
+#         except:
+#             bf16 = False
+#             fp16 = True
+#     else:
+#         # MPS, etc.
+#         fp16 = False
+#         bf16 = False
+
+#     if(jax_param_path is None and openfold_checkpoint_path is None):
+#         raise ValueError(
+#             "At least one of jax_param_path or openfold_checkpoint_path must be specified."
+#         )
+
+#     # model = AlphaFold(config) # 古い初期化方法
+#     model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
+
+#     if(openfold_checkpoint_path is not None):
+#         d = torch.load(openfold_checkpoint_path)
+#         model.load_state_dict(d)
+
+#     model = model.eval()
+
+#     if(bf16):
+#         model = model.bfloat16()
+#     elif(fp16):
+#         model = model.half()
+
+#     model = model.to(model_device)
+    
+#     if(jax_param_path is not None):
+#         # sanity check
+#         if("model_" in config.preset):
+#             model_version = "_".join(config.preset.split("_")[1:])
+#         else:
+#             model_version = config.preset
+        
+#         # It's not a multimer model, but this is how we get the name
+#         if(not config.is_multimer):
+#             model_version = model_version.replace('ptm', 'ptm')
+        
+#         import_jax_weights_(
+#             model, jax_param_path, version=model_version
+#         )
+
+#     logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
+    
+#     yield model, output_dir
 
 # def load_models_from_command_line(
 #     config,
