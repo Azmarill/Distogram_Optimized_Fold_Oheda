@@ -42,79 +42,147 @@ def make_output_directory(output_dir, model_name, multiple_model_mode):
         prediction_dir = os.path.join(output_dir, "predictions")
     os.makedirs(prediction_dir, exist_ok=True)
     return prediction_dir
-
-
+    
 def load_models_from_command_line(
     config,
     model_device,
     openfold_checkpoint_path,
     jax_param_path,
     output_dir,
-    guide_config,
-    guide_config=None
+    guide_config=None, # guide_configを受け取れるようにする
 ):
-    # Create the output directory
-
-    multiple_model_mode = (
-        count_models_to_evaluate(openfold_checkpoint_path, jax_param_path) > 1
-    )
-    if multiple_model_mode:
-        logger.info(f"evaluating multiple models")
-
-    if jax_param_path:
-        for path in jax_param_path.split(","):
-            model_basename = get_model_basename(path)
-            model_version = "_".join(model_basename.split("_")[1:])
-            model = AlphaFold(config, guide_config)
-            model = model.eval()
-            import_jax_weights_(model, path, version=model_version)
-            model = model.to(model_device)
-            logger.info(f"Successfully loaded JAX parameters at {path}...")
-            output_directory = make_output_directory(
-                output_dir, model_basename, multiple_model_mode
-            )
-            yield model, output_directory
-
-    if openfold_checkpoint_path:
-        for path in openfold_checkpoint_path.split(","):
-            model = AlphaFold(config, guide_config)
-            model = model.eval()
-            checkpoint_basename = get_model_basename(path)
-            if os.path.isdir(path):
-                # A DeepSpeed checkpoint
-                ckpt_path = os.path.join(
-                    output_dir,
-                    checkpoint_basename + ".pt",
-                )
-
-                if not os.path.isfile(ckpt_path):
-                    convert_zero_checkpoint_to_fp32_state_dict(
-                        path,
-                        ckpt_path,
-                    )
-                d = torch.load(ckpt_path)
-                import_openfold_weights_(model=model, state_dict=d["ema"]["params"])
+    """
+    Load models from command line arguments.
+    """
+    if(model_device == "cpu"):
+        fp16 = False
+        bf16 = False
+    elif(model_device == "cuda"):
+        try:
+            if(torch.cuda.is_bf16_supported()):
+                bf16 = True
+                fp16 = False
             else:
-                ckpt_path = path
-                d = torch.load(ckpt_path)
+                bf16 = False
+                fp16 = True
+        except:
+            bf16 = False
+            fp16 = True
+    else:
+        # MPS, etc.
+        fp16 = False
+        bf16 = False
 
-                if "ema" in d:
-                    # The public weights have had this done to them already
-                    d = d["ema"]["params"]
-                import_openfold_weights_(model=model, state_dict=d)
-
-            model = model.to(model_device)
-            logger.info(f"Loaded OpenFold parameters at {path}...")
-            output_directory = make_output_directory(
-                output_dir, checkpoint_basename, multiple_model_mode
-            )
-            yield model, output_directory
-
-    if not jax_param_path and not openfold_checkpoint_path:
+    if(jax_param_path is None and openfold_checkpoint_path is None):
         raise ValueError(
-            "At least one of jax_param_path or openfold_checkpoint_path must "
-            "be specified."
+            "At least one of jax_param_path or openfold_checkpoint_path must be specified."
         )
+
+    # model = AlphaFold(config) # 古い初期化方法
+    model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
+
+    if(openfold_checkpoint_path is not None):
+        d = torch.load(openfold_checkpoint_path)
+        model.load_state_dict(d)
+
+    model = model.eval()
+
+    if(bf16):
+        model = model.bfloat16()
+    elif(fp16):
+        model = model.half()
+
+    model = model.to(model_device)
+    
+    if(jax_param_path is not None):
+        # sanity check
+        if("model_" in config.preset):
+            model_version = "_".join(config.preset.split("_")[1:])
+        else:
+            model_version = config.preset
+        
+        # It's not a multimer model, but this is how we get the name
+        if(not config.is_multimer):
+            model_version = model_version.replace('ptm', 'ptm')
+        
+        import_jax_weights_(
+            model, jax_param_path, version=model_version
+        )
+
+    logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
+    
+    yield model, output_dir
+
+# def load_models_from_command_line(
+#     config,
+#     model_device,
+#     openfold_checkpoint_path,
+#     jax_param_path,
+#     output_dir,
+#     guide_config=None
+# ):
+#     # Create the output directory
+
+#     multiple_model_mode = (
+#         count_models_to_evaluate(openfold_checkpoint_path, jax_param_path) > 1
+#     )
+#     if multiple_model_mode:
+#         logger.info(f"evaluating multiple models")
+
+#     if jax_param_path:
+#         for path in jax_param_path.split(","):
+#             model_basename = get_model_basename(path)
+#             model_version = "_".join(model_basename.split("_")[1:])
+#             model = AlphaFold(config, guide_config)
+#             model = model.eval()
+#             import_jax_weights_(model, path, version=model_version)
+#             model = model.to(model_device)
+#             logger.info(f"Successfully loaded JAX parameters at {path}...")
+#             output_directory = make_output_directory(
+#                 output_dir, model_basename, multiple_model_mode
+#             )
+#             yield model, output_directory
+
+#     if openfold_checkpoint_path:
+#         for path in openfold_checkpoint_path.split(","):
+#             model = AlphaFold(config, guide_config)
+#             model = model.eval()
+#             checkpoint_basename = get_model_basename(path)
+#             if os.path.isdir(path):
+#                 # A DeepSpeed checkpoint
+#                 ckpt_path = os.path.join(
+#                     output_dir,
+#                     checkpoint_basename + ".pt",
+#                 )
+
+#                 if not os.path.isfile(ckpt_path):
+#                     convert_zero_checkpoint_to_fp32_state_dict(
+#                         path,
+#                         ckpt_path,
+#                     )
+#                 d = torch.load(ckpt_path)
+#                 import_openfold_weights_(model=model, state_dict=d["ema"]["params"])
+#             else:
+#                 ckpt_path = path
+#                 d = torch.load(ckpt_path)
+
+#                 if "ema" in d:
+#                     # The public weights have had this done to them already
+#                     d = d["ema"]["params"]
+#                 import_openfold_weights_(model=model, state_dict=d)
+
+#             model = model.to(model_device)
+#             logger.info(f"Loaded OpenFold parameters at {path}...")
+#             output_directory = make_output_directory(
+#                 output_dir, checkpoint_basename, multiple_model_mode
+#             )
+#             yield model, output_directory
+
+#     if not jax_param_path and not openfold_checkpoint_path:
+#         raise ValueError(
+#             "At least one of jax_param_path or openfold_checkpoint_path must "
+#             "be specified."
+#         )
 
 
 def parse_fasta(data):
