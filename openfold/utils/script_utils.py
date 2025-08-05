@@ -43,11 +43,9 @@ def make_output_directory(output_dir, model_name, multiple_model_mode):
     os.makedirs(prediction_dir, exist_ok=True)
     return prediction_dir
 
-# openfold/utils/script_utils.py の load_models_from_command_line 関数を置き換え
-
 def load_models_from_command_line(
-    args,                # 'base'セクションの設定全体
-    config,              # model_config() からのモデル詳細設定
+    args,                
+    config,              
     guide_config=None
 ):
     model_device = args.model_device
@@ -59,7 +57,6 @@ def load_models_from_command_line(
         fp16 = False
         bf16 = False
     else:
-        # (FP16/BF16の自動設定ロジックは元のまま)
         fp16 = True
         bf16 = False
         if(torch.cuda.is_bf16_supported()):
@@ -87,7 +84,7 @@ def load_models_from_command_line(
     model = model.to(model_device)
     
     if(jax_param_path is not None):
-        model_preset = args.config_preset # presetはargsから取得
+        model_preset = args.config_preset 
         model_version = model_preset
         
         if(not config.globals.is_multimer):
@@ -100,148 +97,6 @@ def load_models_from_command_line(
     
     yield model, output_dir
     
-# def load_models_from_command_line(
-#     config,
-#     model_device,
-#     openfold_checkpoint_path,
-#     jax_param_path,
-#     output_dir,
-#     guide_config=None, # guide_configを受け取れるようにする
-# ):
-#     """
-#     Load models from command line arguments.
-#     """
-#     if(model_device == "cpu"):
-#         fp16 = False
-#         bf16 = False
-#     elif(model_device == "cuda"):
-#         try:
-#             if(torch.cuda.is_bf16_supported()):
-#                 bf16 = True
-#                 fp16 = False
-#             else:
-#                 bf16 = False
-#                 fp16 = True
-#         except:
-#             bf16 = False
-#             fp16 = True
-#     else:
-#         # MPS, etc.
-#         fp16 = False
-#         bf16 = False
-
-#     if(jax_param_path is None and openfold_checkpoint_path is None):
-#         raise ValueError(
-#             "At least one of jax_param_path or openfold_checkpoint_path must be specified."
-#         )
-
-#     # model = AlphaFold(config) # 古い初期化方法
-#     model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
-
-#     if(openfold_checkpoint_path is not None):
-#         d = torch.load(openfold_checkpoint_path)
-#         model.load_state_dict(d)
-
-#     model = model.eval()
-
-#     if(bf16):
-#         model = model.bfloat16()
-#     elif(fp16):
-#         model = model.half()
-
-#     model = model.to(model_device)
-    
-#     if(jax_param_path is not None):
-#         # sanity check
-#         if("model_" in config.preset):
-#             model_version = "_".join(config.preset.split("_")[1:])
-#         else:
-#             model_version = config.preset
-        
-#         # It's not a multimer model, but this is how we get the name
-#         if(not config.is_multimer):
-#             model_version = model_version.replace('ptm', 'ptm')
-        
-#         import_jax_weights_(
-#             model, jax_param_path, version=model_version
-#         )
-
-#     logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
-    
-#     yield model, output_dir
-
-# def load_models_from_command_line(
-#     config,
-#     model_device,
-#     openfold_checkpoint_path,
-#     jax_param_path,
-#     output_dir,
-#     guide_config=None
-# ):
-#     # Create the output directory
-
-#     multiple_model_mode = (
-#         count_models_to_evaluate(openfold_checkpoint_path, jax_param_path) > 1
-#     )
-#     if multiple_model_mode:
-#         logger.info(f"evaluating multiple models")
-
-#     if jax_param_path:
-#         for path in jax_param_path.split(","):
-#             model_basename = get_model_basename(path)
-#             model_version = "_".join(model_basename.split("_")[1:])
-#             model = AlphaFold(config, guide_config)
-#             model = model.eval()
-#             import_jax_weights_(model, path, version=model_version)
-#             model = model.to(model_device)
-#             logger.info(f"Successfully loaded JAX parameters at {path}...")
-#             output_directory = make_output_directory(
-#                 output_dir, model_basename, multiple_model_mode
-#             )
-#             yield model, output_directory
-
-#     if openfold_checkpoint_path:
-#         for path in openfold_checkpoint_path.split(","):
-#             model = AlphaFold(config, guide_config)
-#             model = model.eval()
-#             checkpoint_basename = get_model_basename(path)
-#             if os.path.isdir(path):
-#                 # A DeepSpeed checkpoint
-#                 ckpt_path = os.path.join(
-#                     output_dir,
-#                     checkpoint_basename + ".pt",
-#                 )
-
-#                 if not os.path.isfile(ckpt_path):
-#                     convert_zero_checkpoint_to_fp32_state_dict(
-#                         path,
-#                         ckpt_path,
-#                     )
-#                 d = torch.load(ckpt_path)
-#                 import_openfold_weights_(model=model, state_dict=d["ema"]["params"])
-#             else:
-#                 ckpt_path = path
-#                 d = torch.load(ckpt_path)
-
-#                 if "ema" in d:
-#                     # The public weights have had this done to them already
-#                     d = d["ema"]["params"]
-#                 import_openfold_weights_(model=model, state_dict=d)
-
-#             model = model.to(model_device)
-#             logger.info(f"Loaded OpenFold parameters at {path}...")
-#             output_directory = make_output_directory(
-#                 output_dir, checkpoint_basename, multiple_model_mode
-#             )
-#             yield model, output_directory
-
-#     if not jax_param_path and not openfold_checkpoint_path:
-#         raise ValueError(
-#             "At least one of jax_param_path or openfold_checkpoint_path must "
-#             "be specified."
-#         )
-
-
 def parse_fasta(data):
     data = re.sub(">$", "", data, flags=re.M)
     lines = [
@@ -277,7 +132,6 @@ def update_timings(timing_dict, output_file=os.path.join(os.getcwd(), "timings.j
 
 def run_model(model, batch, tag, output_dir):
     with torch.no_grad():
-        # Temporarily disable templates if there aren't any in the batch
         template_enabled = model.config.template.enabled
         model.config.template.enabled = template_enabled and any(
             ["template_" in k for k in batch]
@@ -340,63 +194,6 @@ def prep_output(
             residue_index=processed_feature_dict["residue_index"] + 1,
             b_factors=plddt_b_factors,
         )
-
-    # Prep protein metadata
-#    template_domain_names = []
-#    template_chain_index = None
-#    if (
-#        feature_processor.config.common.use_templates
-#        and "template_domain_names" in feature_dict
-#    ):
-#        template_domain_names = [
-#            t.decode("utf-8") for t in feature_dict["template_domain_names"]
-#        ]#
-
-        # This works because templates are not shuffled during inference
-#        template_domain_names = template_domain_names[
-#            : feature_processor.config.predict.max_templates
-#       ]
-
-#        if "template_chain_index" in feature_dict:
-#            template_chain_index = feature_dict["template_chain_index"]
-#            template_chain_index = template_chain_index[
-#                : feature_processor.config.predict.max_templates
-#            ]
-
-#    no_recycling = feature_processor.config.common.max_recycling_iters
-#    remark = ", ".join(
-#        [
-#            f"no_recycling={no_recycling}",
-#            f"max_templates={feature_processor.config.predict.max_templates}",
-#            f"config_preset={config_preset}",
-#        ]
-#    )
-
-    # For multi-chain FASTAs
-#    ri = feature_dict["residue_index"]
-#    chain_index = (ri - numpy.arange(ri.shape[0])) / multimer_ri_gap
-#    chain_index = chain_index.astype(numpy.int64)
-#    cur_chain = 0
-#    prev_chain_max = 0
-#    for i, c in enumerate(chain_index):
-#        if c != cur_chain:
-#            cur_chain = c
-#            prev_chain_max = i + cur_chain * multimer_ri_gap
-
-#        batch["residue_index"][i] -= prev_chain_max
-
-#    unrelaxed_protein = protein.from_prediction(
-#        features=batch,
-#        result=out,
-#        b_factors=plddt_b_factors,
-#        remove_leading_feature_dimension=False,
-#        remark=remark,
-#        parents=template_domain_names,
-#        parents_chain_index=template_chain_index,
-#    )
-
-#    return unrelaxed_protein
-
 
 def relax_protein(
     config,
