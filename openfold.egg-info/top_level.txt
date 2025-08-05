@@ -1,0 +1,3 @@
+attn_core_inplace_cuda
+openfold
+tools

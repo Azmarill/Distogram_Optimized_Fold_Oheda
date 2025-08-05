@@ -190,6 +190,7 @@ class AlphaFold(nn.Module):
         self.aux_heads = AuxiliaryHeads(
             self.config["heads"],
         )
+        self.device_group = None
 
         self.orig_blocks_per_ckpt = self.globals.blocks_per_ckpt
         self.evoformer.eval()
@@ -227,7 +228,7 @@ class AlphaFold(nn.Module):
         self.recycling_embedder = self.recycling_embedder.to(precision)
         self.extra_msa_stack = self.extra_msa_stack.to(precision)
 
-        self.globals.offload_inference = True
+        self.globals.offload_inference = False
         self.globals.use_deepspeed_evo_attention = False
         self.config.template.offload_inference = True
         self.config.template.template_pair_stack.tune_chunk_size = False
@@ -397,9 +398,18 @@ class AlphaFold(nn.Module):
             len_A = gt_distogram.shape[0]
             pred_logits_A_part = pred_logits[:len_A, :len_A, :]
             mask_A_part = gt_mask[:len_A, :len_A]
+
+            print("--- DEBUG INFO ---")
+            print(f"Shape of pred_logits_A_part: {pred_logits_A_part.shape}")
+            print(f"Shape of gt_distogram: {gt_distogram.shape}")
+            print(f"Shape of mask_A_part: {mask_A_part.shape}")
+            print(f"Data type of mask_A_part: {mask_A_part.dtype}")
+            print(f"Number of True values in mask_A_part: {torch.sum(mask_A_part).item()}")
+            print("--------------------")
+
             pred_logits_masked = pred_logits_A_part[mask_A_part]
-            gt_distogram_masked = gt_distogram[mask_A_part]
-            gt_bins = torch.argmax(gt_distogram_masked, dim=-1)
+            gt_bins = gt_distogram[mask_A_part]
+#            gt_bins = torch.argmax(gt_distogram_masked, dim=-1)
             loss = F.cross_entropy(pred_logits_masked, gt_bins)
         else:
             print(f"Running in MONOMER refinement mode.")
@@ -537,12 +547,14 @@ class AlphaFold(nn.Module):
                         curr_structure["final_atom_positions"][:, 1]
                         .cpu()
                         .detach()
+                        .to(torch.float32) 
                         .numpy()
                     )
                     initial_ca = (
                         initial_structure["final_atom_positions"][:, 1]
                         .cpu()
                         .detach()
+                        .to(torch.float32) 
                         .numpy()
                     )
 
@@ -615,8 +627,8 @@ class AlphaFold(nn.Module):
 
         if iter_guide_config.opt:
             self.opt_settings(iter_guide_config)
-        else:
-            self.reverse_opt_settings()
+#        else:
+#            self.reverse_opt_settings()
 
         # This needs to be done manually for DeepSpeed's sake
         dtype = next(self.parameters()).dtype
@@ -1020,7 +1032,7 @@ class AlphaFold(nn.Module):
         is_grad_enabled = torch.is_grad_enabled()
 
         # Main recycling loop
-        num_iters = batch["aatype"].shape[-1]
+        num_iters = self.guide_config.max_recycling_iters
         early_stop = False
         num_recycles = 0
         intermediate_outputs = []

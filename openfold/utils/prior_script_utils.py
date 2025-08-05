@@ -42,36 +42,46 @@ def make_output_directory(output_dir, model_name, multiple_model_mode):
         prediction_dir = os.path.join(output_dir, "predictions")
     os.makedirs(prediction_dir, exist_ok=True)
     return prediction_dir
-
-# openfold/utils/script_utils.py の load_models_from_command_line 関数を置き換え
-
+    
 def load_models_from_command_line(
-    args,                # 'base'セクションの設定全体
-    config,              # model_config() からのモデル詳細設定
-    guide_config=None
+    args,
+    config,
+    model_preset,
+    model_device,
+    openfold_checkpoint_path,
+    jax_param_path,
+    output_dir,
+    guide_config=None, # guide_configを受け取れるようにする
 ):
-    model_device = args.model_device
-    jax_param_path = args.jax_param_path
-    openfold_checkpoint_path = args.openfold_checkpoint_path
-    output_dir = args.output_dir if hasattr(args, 'output_dir') else ""
-
+    """
+    Load models from command line arguments.
+    """
     if(model_device == "cpu"):
         fp16 = False
         bf16 = False
+    elif(model_device == "cuda"):
+        try:
+            if(torch.cuda.is_bf16_supported()):
+                bf16 = True
+                fp16 = False
+            else:
+                bf16 = False
+                fp16 = True
+        except:
+            bf16 = False
+            fp16 = True
     else:
-        # (FP16/BF16の自動設定ロジックは元のまま)
-        fp16 = True
+        # MPS, etc.
+        fp16 = False
         bf16 = False
-        if(torch.cuda.is_bf16_supported()):
-            bf16 = True
-            fp16 = False
-            
+
     if(jax_param_path is None and openfold_checkpoint_path is None):
         raise ValueError(
             "At least one of jax_param_path or openfold_checkpoint_path must be specified."
         )
 
-    model = AlphaFold(config, guide_config=guide_config)
+    # model = AlphaFold(config) # 古い初期化方法
+    model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
 
     if(openfold_checkpoint_path is not None):
         d = torch.load(openfold_checkpoint_path)
@@ -87,88 +97,23 @@ def load_models_from_command_line(
     model = model.to(model_device)
     
     if(jax_param_path is not None):
-        model_preset = args.config_preset # presetはargsから取得
-        model_version = model_preset
+        # sanity check
+        if("model_" in args.preset):
+            model_version = "_".join(config.preset.split("_")[1:])
+        else:
+            model_version = config.preset
         
-        if(not config.globals.is_multimer):
+        # It's not a multimer model, but this is how we get the name
+        if(not config.is_multimer):
             model_version = model_version.replace('ptm', 'ptm')
         
         import_jax_weights_(
             model, jax_param_path, version=model_version
         )
-        logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
+
+    logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
     
     yield model, output_dir
-    
-# def load_models_from_command_line(
-#     config,
-#     model_device,
-#     openfold_checkpoint_path,
-#     jax_param_path,
-#     output_dir,
-#     guide_config=None, # guide_configを受け取れるようにする
-# ):
-#     """
-#     Load models from command line arguments.
-#     """
-#     if(model_device == "cpu"):
-#         fp16 = False
-#         bf16 = False
-#     elif(model_device == "cuda"):
-#         try:
-#             if(torch.cuda.is_bf16_supported()):
-#                 bf16 = True
-#                 fp16 = False
-#             else:
-#                 bf16 = False
-#                 fp16 = True
-#         except:
-#             bf16 = False
-#             fp16 = True
-#     else:
-#         # MPS, etc.
-#         fp16 = False
-#         bf16 = False
-
-#     if(jax_param_path is None and openfold_checkpoint_path is None):
-#         raise ValueError(
-#             "At least one of jax_param_path or openfold_checkpoint_path must be specified."
-#         )
-
-#     # model = AlphaFold(config) # 古い初期化方法
-#     model = AlphaFold(config, guide_config=guide_config) # 新しい初期化方法
-
-#     if(openfold_checkpoint_path is not None):
-#         d = torch.load(openfold_checkpoint_path)
-#         model.load_state_dict(d)
-
-#     model = model.eval()
-
-#     if(bf16):
-#         model = model.bfloat16()
-#     elif(fp16):
-#         model = model.half()
-
-#     model = model.to(model_device)
-    
-#     if(jax_param_path is not None):
-#         # sanity check
-#         if("model_" in config.preset):
-#             model_version = "_".join(config.preset.split("_")[1:])
-#         else:
-#             model_version = config.preset
-        
-#         # It's not a multimer model, but this is how we get the name
-#         if(not config.is_multimer):
-#             model_version = model_version.replace('ptm', 'ptm')
-        
-#         import_jax_weights_(
-#             model, jax_param_path, version=model_version
-#         )
-
-#     logger.info(f"Successfully loaded JAX parameters at {jax_param_path}...")
-    
-#     yield model, output_dir
 
 # def load_models_from_command_line(
 #     config,
@@ -300,13 +245,12 @@ def run_model(model, batch, tag, output_dir):
 
 def prep_output(
     out,
-    processed_feature_dict,
+    batch,
     feature_dict,
     feature_processor,
     config_preset,
     multimer_ri_gap,
     subtract_plddt,
-    is_multimer=False
 ):
     plddt = out["plddt"]
 
@@ -315,87 +259,63 @@ def prep_output(
     )
 
     if subtract_plddt:
-        plddt = plddt - out["plddt_baseline"]
-
-    if is_multimer:
-#        atom_mask = processed_feature_dict["atom_mask"]
-        if "chain_index" not in processed_feature_dict:
-            processed_feature_dict["chain_index"] = processed_feature_dict["asym_id"] - 1
-        return protein.Protein(
-            atom_positions=out["final_atom_positions"],
-            atom_mask=out["final_atom_mask"],
-            aatype=processed_feature_dict["aatype"],
-            residue_index=processed_feature_dict["residue_index"] + 1,
-            b_factors=plddt_b_factors,
-#            asym_id=processed_feature_dict["asym_id"],
-#            entity_id=processed_feature_dict["entity_id"],
-            chain_index=processed_feature_dict["chain_index"],
-        )
-
-    else:
-        return protein.Protein(
-            atom_positions=out["final_atom_positions"],
-            atom_mask=out["final_atom_mask"],
-            aatype=processed_feature_dict["aatype"],
-            residue_index=processed_feature_dict["residue_index"] + 1,
-            b_factors=plddt_b_factors,
-        )
+        plddt_b_factors = 100 - plddt_b_factors
 
     # Prep protein metadata
-#    template_domain_names = []
-#    template_chain_index = None
-#    if (
-#        feature_processor.config.common.use_templates
-#        and "template_domain_names" in feature_dict
-#    ):
-#        template_domain_names = [
-#            t.decode("utf-8") for t in feature_dict["template_domain_names"]
-#        ]#
+    template_domain_names = []
+    template_chain_index = None
+    if (
+        feature_processor.config.common.use_templates
+        and "template_domain_names" in feature_dict
+    ):
+        template_domain_names = [
+            t.decode("utf-8") for t in feature_dict["template_domain_names"]
+        ]
 
         # This works because templates are not shuffled during inference
-#        template_domain_names = template_domain_names[
-#            : feature_processor.config.predict.max_templates
-#       ]
+        template_domain_names = template_domain_names[
+            : feature_processor.config.predict.max_templates
+        ]
 
-#        if "template_chain_index" in feature_dict:
-#            template_chain_index = feature_dict["template_chain_index"]
-#            template_chain_index = template_chain_index[
-#                : feature_processor.config.predict.max_templates
-#            ]
+        if "template_chain_index" in feature_dict:
+            template_chain_index = feature_dict["template_chain_index"]
+            template_chain_index = template_chain_index[
+                : feature_processor.config.predict.max_templates
+            ]
 
-#    no_recycling = feature_processor.config.common.max_recycling_iters
-#    remark = ", ".join(
-#        [
-#            f"no_recycling={no_recycling}",
-#            f"max_templates={feature_processor.config.predict.max_templates}",
-#            f"config_preset={config_preset}",
-#        ]
-#    )
+    no_recycling = feature_processor.config.common.max_recycling_iters
+    remark = ", ".join(
+        [
+            f"no_recycling={no_recycling}",
+            f"max_templates={feature_processor.config.predict.max_templates}",
+            f"config_preset={config_preset}",
+        ]
+    )
 
     # For multi-chain FASTAs
-#    ri = feature_dict["residue_index"]
-#    chain_index = (ri - numpy.arange(ri.shape[0])) / multimer_ri_gap
-#    chain_index = chain_index.astype(numpy.int64)
-#    cur_chain = 0
-#    prev_chain_max = 0
-#    for i, c in enumerate(chain_index):
-#        if c != cur_chain:
-#            cur_chain = c
-#            prev_chain_max = i + cur_chain * multimer_ri_gap
+    ri = feature_dict["residue_index"]
+    chain_index = (ri - numpy.arange(ri.shape[0])) / multimer_ri_gap
+    chain_index = chain_index.astype(numpy.int64)
+    cur_chain = 0
+    prev_chain_max = 0
+    for i, c in enumerate(chain_index):
+        if c != cur_chain:
+            cur_chain = c
+            prev_chain_max = i + cur_chain * multimer_ri_gap
 
-#        batch["residue_index"][i] -= prev_chain_max
+        batch["residue_index"][i] -= prev_chain_max
 
-#    unrelaxed_protein = protein.from_prediction(
-#        features=batch,
-#        result=out,
-#        b_factors=plddt_b_factors,
-#        remove_leading_feature_dimension=False,
-#        remark=remark,
-#        parents=template_domain_names,
-#        parents_chain_index=template_chain_index,
-#    )
+    unrelaxed_protein = protein.from_prediction(
+        features=batch,
+        result=out,
+        b_factors=plddt_b_factors,
+        remove_leading_feature_dimension=False,
+        remark=remark,
+        parents=template_domain_names,
+        parents_chain_index=template_chain_index,
+    )
 
-#    return unrelaxed_protein
+    return unrelaxed_protein
 
 
 def relax_protein(

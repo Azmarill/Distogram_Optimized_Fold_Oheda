@@ -1,0 +1,10 @@
+outputs/
+dist/
+build/
+*.so
+*.egg
+*.npy
+*.npz
+__pycache__/
+*.pyc
+

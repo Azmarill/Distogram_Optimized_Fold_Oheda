@@ -1,9 +1,9 @@
 import numpy as np
 
 # FFA2の長さを取得 (例)
-len_ffa2 = 278 
+len_ffa2 = 263 
 # 複合体全体の長さを取得 (例)
-len_total = 632
+len_total = 617
 
 # まずは全て0で初期化
 mask = np.zeros((len_total, len_total), dtype=bool)

@@ -58,11 +58,9 @@ class AlphaFold:
         )
         self.model_generator = list(
             load_models_from_command_line(
+                self.args,
                 self.config,
-                self.args.model_device,
-                self.args.openfold_checkpoint_path,
-                self.args.jax_param_path,
-                output_dir="",
+                guide_config=self.guide_config
             )
         )
 
@@ -129,6 +127,7 @@ class AlphaFold:
             lambda x: np.array(x[..., -1].cpu()), processed_feature_dict
         )
         out = tensor_tree_map(lambda x: np.array(x.cpu().to(torch.float32)), out)
+        is_multimer = "multimer" in self.args.config_preset
 
         unrelaxed_protein = prep_output(
             out,
@@ -138,17 +137,27 @@ class AlphaFold:
             self.args.config_preset,
             self.args.multimer_ri_gap,
             self.args.subtract_plddt,
+            is_multimer=is_multimer,
+#            is_multimer = "multimer" in self.args.config_preset
+#            is_multimer=isinstance(feature_dict["msa"], list) 
         )
 
+        if unrelaxed_output_path.endswith('.cif'):
+            unrelaxed_output_path = unrelaxed_output_path.replace(".cif", ".pdb")
+        with open(unrelaxed_output_path, "w") as fp:
+            fp.write(protein.to_pdb(unrelaxed_protein))
+
+        logger.info(f"Final PDB output written to {unrelaxed_output_path}")
+
         # PDB/CIFファイルの書き出し
-        if self.args.cif_output:
-            cif_output_path = unrelaxed_output_path.replace(".pdb", ".cif")
-            with open(cif_output_path, "w") as fp:
-                fp.write(protein.to_modelcif(unrelaxed_protein))
-            unrelaxed_output_path = cif_output_path
-        else:
-            with open(unrelaxed_output_path, "w") as fp:
-                fp.write(protein.to_pdb(unrelaxed_protein))
+#        if self.args.cif_output:
+#            cif_output_path = unrelaxed_output_path.replace(".pdb", ".cif")
+#            with open(cif_output_path, "w") as fp:
+#                fp.write(protein.to_modelcif(unrelaxed_protein))
+#            unrelaxed_output_path = cif_output_path
+#        else:
+#            with open(unrelaxed_output_path, "w") as fp:
+#                fp.write(protein.to_pdb(unrelaxed_protein))
 
         # 構造緩和
         if not self.args.skip_relaxation:
@@ -159,7 +168,7 @@ class AlphaFold:
                 unrelaxed_protein,
                 output_directory,
                 tag,
-                self.args.cif_output,
+                cif_output=False,
             )
 
     def run(self, input_dict, data_dirs):

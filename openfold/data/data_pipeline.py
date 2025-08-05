@@ -481,24 +481,24 @@ class AlignmentRunner:
     ):
         """Runs alignment tools on a sequence"""
         if(self.jackhmmer_uniref90_runner is not None):
-            uniref90_out_path = os.path.join(output_dir, "uniref90_hits.sto")
+            uniref90_out_path = os.path.join(output_dir, "uniref90_hits.a3m")
 
             jackhmmer_uniref90_result = run_msa_tool(
                 msa_runner=self.jackhmmer_uniref90_runner,
                 fasta_path=fasta_path,
                 msa_out_path=uniref90_out_path,
-                msa_format='sto',
+                msa_format='a3m',
                 max_sto_sequences=self.uniref_max_hits,
             )
 
-            template_msa = jackhmmer_uniref90_result["sto"]
+            template_msa = jackhmmer_uniref90_result["a3m"]
             template_msa = parsers.deduplicate_stockholm_msa(template_msa)
             template_msa = parsers.remove_empty_columns_from_stockholm_msa(
                 template_msa
             )
 
             if(self.template_searcher is not None):
-                if(self.template_searcher.input_format == "sto"):
+                if(self.template_searcher.input_format == "a3m"):
                     pdb_templates_result = self.template_searcher.query(
                         template_msa,
                         output_dir=output_dir
