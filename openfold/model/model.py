@@ -349,32 +349,6 @@ class AlphaFold(nn.Module):
 
         return entropy(pred_probs).mean()
 
-#    def gt_distogram_loss(
-#        self, z: torch.Tensor, iter_guide_config: dict, tag: str
-#    ) -> torch.Tensor:
-#        device = z.device
-#        pred_logits = self.aux_heads.distogram(z)
-#
-#        assert iter_guide_config.gt_distances_path is not None
-#        gt_distances_path = iter_guide_config.gt_distances_path.format(tag=tag)
-#        print(f"Loading distances from {gt_distances_path}")
-#        gt_distances = np.load(gt_distances_path)
-#        if iter_guide_config.gt_mask_path is not None:
-#            gt_mask_path = iter_guide_config.gt_mask_path.format(tag=tag)
-#            print(f"Loading mask from {gt_mask_path}")
-#            gt_mask = np.load(gt_mask_path)
-#        else:
-#            gt_mask = np.ones_like(gt_distances)
-#        gt_distances = torch.as_tensor(gt_distances).to(device)
-#        gt_mask = torch.as_tensor(gt_mask).to(device).flatten().type(torch.bool)
-#        gt_distogram = dists_to_distogram(gt_distances)
-#        n_buckets = pred_logits.shape[-1]
-#        loss = F.cross_entropy(
-#            pred_logits.reshape([-1, n_buckets])[gt_mask],
-#            gt_distogram.flatten()[gt_mask],
-#        )
-#        return loss
-
     def gt_distogram_loss(
         self, z: torch.Tensor, iter_guide_config: dict, tag: str
     ) -> torch.Tensor:
@@ -591,25 +565,21 @@ class AlphaFold(nn.Module):
         z_param = z_param.detach() + orig_z
         m = m_param.detach()
         z = z_param.detach()
-        # ===== ここから修正を追加 =====
+
         import os
-
-        # 保存先のディレクトリを指定 (例: info_dir)
-        # guide_configからinfo_dirを取得するのが良いでしょう
+#sorry
         save_dir = self.guide_config.info_dir 
-        os.makedirs(save_dir, exist_ok=True) # ディレクトリがなければ作成
+        os.makedirs(save_dir, exist_ok=True)
 
-        # m_paramとz_paramをファイルに保存
         print("Saving m_param and z_param...")
         torch.save(
-            m_param.cpu(), # CPUに送ってから保存するのが安全
+            m_param.cpu(), 
             os.path.join(save_dir, f"{feats['tag']}_m_param.pt")
         )
         torch.save(
             z_param.cpu(),
             os.path.join(save_dir, f"{feats['tag']}_z_param.pt")
         )
-        # ===== 修正ここまで =====
         return m, z, all_sm_outputs, all_metrics, all_distograms
 
     def postprocess_structure(self, outputs, feats):
@@ -627,8 +597,6 @@ class AlphaFold(nn.Module):
 
         if iter_guide_config.opt:
             self.opt_settings(iter_guide_config)
-#        else:
-#            self.reverse_opt_settings()
 
         # This needs to be done manually for DeepSpeed's sake
         dtype = next(self.parameters()).dtype
