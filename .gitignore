@@ -7,4 +7,4 @@ build/
 *.npz
 __pycache__/
 *.pyc
-
+prediction_results/

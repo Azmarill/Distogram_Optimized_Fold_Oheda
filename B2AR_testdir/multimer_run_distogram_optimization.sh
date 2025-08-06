@@ -48,9 +48,9 @@ echo "Cache directory: ${CACHE_DIR}"
 echo "Starting EGF refinement..."
 
 # あなたが実行したいコマンド
-python main.py --config-name=multimer_refine_FFA2_active
+python main.py --config-name=multimer_refine_B2AR_inactive
 
-echo "EGF script finished."
+echo "Distogram Optimization script finished."
 
 # --- 4. 環境の非アクティブ化 ---
 conda deactivate

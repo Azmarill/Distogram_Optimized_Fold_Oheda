@@ -5,9 +5,9 @@ defaults:
   - _self_
 
 # あなたのFASTAファイルがあるディレクトリ
-fasta_dir: /work/gn46/n46001/tools/openfold/inputs/ 
+fasta_dir: /work/gn46/n46001/tools/openfold/inputs/B2AR_active/
 # 事前計算済みアラインメントがあるディレクトリ
-alignment_dir: /work/gn46/n46001/tools/openfold/alignments_aligned_final/
+alignment_dir: /work/gn46/n46001/tools/openfold/alignments_B2AR/
 # この実験用の出力先
 output_dir: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/prediction_results/test
 template_dir: /work/gn46/n46001/tools/openfold/database/empty_templates/
@@ -28,7 +28,7 @@ base:
 guide_config:
   max_recycling_iters: 1
   plot_rmsd_path: false
-  tag_cluster_mapping_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/tag_cluster_mapping.json
+  tag_cluster_mapping_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/B2AR_testdir/B2AR_tag_cluster_mapping.json
   info_dir: ${output_dir}/info
   iter_0: # 1サイクル目のリサイクリングで最適化
     opt: true                   # 最適化を有効にする
@@ -40,8 +40,8 @@ guide_config:
 
     # ステップ1で作成した「生の距離行列」へのパス
     # {tag}はプログラムがFASTAヘッダー名(例: FFA2)に自動で置き換えます
-    gt_distances_path: /work/04/gn46/share/egf/EGF/distogram_outputs/FFA2_inactive_do_truth_distogram.npy
-    gt_mask_path: /work/gn46/share/egf/EGF/ffa2_multimer_mask.npy
+    gt_distances_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/B2AR_testdir/gt_β2AR_active_4LDE_clear.npy
+    gt_mask_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/B2AR_testdir/B2AR_active_multimer_mask.npy
   iter_1:
     opt: false
     optimizer: adam
