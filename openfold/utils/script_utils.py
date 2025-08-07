@@ -187,6 +187,8 @@ def prep_output(
         )
 
     else:
+        num_res = processed_feature_dict["aatype"].shape[0]
+        chain_index = np.zeros(num_res, dtype=np.int32)
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
