@@ -4,7 +4,7 @@ import os
 import re
 import time
 
-import numpy
+import numpy as np
 import torch
 
 from openfold.model.model import AlphaFold
