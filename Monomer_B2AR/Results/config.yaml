@@ -1,0 +1,54 @@
+base:
+  name: alphafold
+  model_device: cuda
+  device_group: null
+  config_preset: model_3_ptm
+  jax_param_path: /work/04/gn46/share/openfold/openfold/openfold/resources/params/params_model_3_ptm.npz
+  openfold_checkpoint_path: null
+  save_outputs: false
+  cpus: 8
+  preset: full_dbs
+  output_postfix: null
+  data_random_seed: 0
+  skip_relaxation: true
+  multimer_ri_gap: 200
+  trace_model: false
+  subtract_plddt: false
+  long_sequence_inference: false
+  cif_output: true
+  crop_msa_num: 512
+  p1: null
+  p2: null
+  kalign_binary_path: null
+  use_mek: true
+  max_template_date: '9999-12-31'
+  release_dates_path: null
+  obsolete_pdbs_path: null
+guide_config:
+  info_dir: ${output_dir}/info
+  plot_rmsd_path: false
+  log_intermediate_structures: true
+  max_recycling_iters: 1
+  tag_cluster_mapping_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Monomer_B2AR/B2AR_inactive_tag_cluster_mapping.json
+  device_group: null
+  skip_existing: false
+  save_distograms: false
+  iter_0:
+    opt: true
+    num_gradient_steps: 10
+    guidance_lr: 0.01
+    entropy_weight: null
+    gt_distogram_weight: 1.0
+    optimizer: adam
+    precision: bfloat16
+    gt_distances_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Monomer_B2AR/gt_β2AR_inactive_5JQH_clear.npy
+    gt_mask_path: null
+  iter_1:
+    opt: false
+  iter_2:
+    opt: false
+fasta_dir: /work/gn46/n46001/tools/openfold/inputs/
+alignment_dir: /work/gn46/n46001/tools/openfold/alignments/
+output_dir: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Monomer_B2AR/Results
+template_dir: /work/gn46/n46001/tools/openfold/database/empty_templates/
+structure_dir: /work/gn46/n46001/tools/openfold/database/pdb_mmcif/mmcif_files/
