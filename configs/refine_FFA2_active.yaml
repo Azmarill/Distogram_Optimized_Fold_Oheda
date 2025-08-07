@@ -9,7 +9,7 @@ fasta_dir: /work/gn46/n46001/tools/openfold/inputs/
 # 事前計算済みアラインメントがあるディレクトリ
 alignment_dir: /work/gn46/n46001/tools/openfold/alignments/
 # この実験用の出力先
-output_dir: /work/gn46/n46001/tools/openfold/outputs/refine_FFA2_inactive_multimer_Gi/
+output_dir: /work/gn46/n46001/tools/openfold/outputs/refine_FFA2_inactive/
 template_dir: /work/gn46/n46001/tools/openfold/database/empty_templates/
 structure_dir: /work/gn46/n46001/tools/openfold/database/pdb_mmcif/mmcif_files/
 
