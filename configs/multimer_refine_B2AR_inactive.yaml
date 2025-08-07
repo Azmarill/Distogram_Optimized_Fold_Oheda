@@ -36,7 +36,7 @@ guide_config:
     guidance_lr: 0.01           # 学習率
 
     entropy_weight: null        # エントロピー損失は使わない
-    gt_distogram_weight: 0.001
+    gt_distogram_weight: 5
     # 正解distogram損失を有効にする
 
     # ステップ1で作成した「生の距離行列」へのパス

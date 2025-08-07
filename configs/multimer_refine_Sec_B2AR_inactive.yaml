@@ -1,0 +1,56 @@
+# 基本設定をインポート
+defaults:
+  - base: alphafold
+  - guide_config: gtgf
+  - _self_
+
+# あなたのFASTAファイルがあるディレクトリ
+fasta_dir: /work/gn46/n46001/tools/openfold/inputs/Sec_B2AR_inactive/
+# 事前計算済みアラインメントがあるディレクトリ
+alignment_dir: /work/gn46/n46001/tools/openfold/alignments_Sec_B2AR/
+# この実験用の出力先
+output_dir: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/prediction_results/iter1_Sec_B2AR_inactive
+template_dir: /work/gn46/n46001/tools/openfold/database/empty_templates/
+structure_dir: /work/gn46/n46001/tools/openfold/database/pdb_mmcif/mmcif_files/
+
+base:
+  cpus: 8
+  skip_relaxation: true
+  cif_output: false 
+#  crop_msa_num: 128
+#  preset: model_1_multimer_v3
+  config_preset: model_1_multimer_v3
+  jax_param_path: /work/04/gn46/share/openfold/openfold/openfold/resources/params/params_model_1_multimer_v3.npz
+  max_template_date: '9999-12-31'
+  release_dates_path: null
+  obsolete_pdbs_path: null
+# ガイダンス（誘導）の詳細設定
+guide_config:
+  max_recycling_iters: 1
+  plot_rmsd_path: false
+  tag_cluster_mapping_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Sec_B2AR_testdir/B2AR_inactive_tag_cluster_mapping.json
+  info_dir: ${output_dir}/info
+  iter_0: # 1サイクル目のリサイクリングで最適化
+    opt: true                   # 最適化を有効にする
+    num_gradient_steps: 1      # 勾配降下を10ステップ実行
+    guidance_lr: 0.01           # 学習率
+
+    entropy_weight: null        # エントロピー損失は使わない
+    gt_distogram_weight: 2.0    # 正解distogram損失を有効にする
+
+    # ステップ1で作成した「生の距離行列」へのパス
+    # {tag}はプログラムがFASTAヘッダー名(例: FFA2)に自動で置き換えます
+    gt_distances_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Sec_B2AR_testdir/gt_β2AR_inactive_5JQH_clear_remove.npy
+    gt_mask_path: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/Sec_B2AR_testdir/Sec_B2AR_inactive_multimer_mask.npy
+  iter_1:
+    opt: false
+    optimizer: adam
+    precision: bfloat16
+  iter_2:
+    opt: false
+    optimizer: adam
+    precision: bfloat16
+  iter_3:
+    opt: false
+    optimizer: adam
+    precision: bfloat16
