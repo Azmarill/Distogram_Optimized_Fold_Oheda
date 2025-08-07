@@ -454,8 +454,18 @@ class AlphaFold(nn.Module):
     ]:
         precision = str_to_dtype[iter_guide_config.precision]
         torch.set_grad_enabled(True)
-        m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
-        z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
+        if hasattr(iter_guide_config, 'm_param_path') and iter_guide_config.m_param_path is not None:
+            print(f"Loading pre-optimized m_param from: {iter_guide_config.m_param_path}")
+            m_param = torch.load(iter_guide_config.m_param_path, map_location=device)
+            print(f"Loading pre-optimized z_param from: {iter_guide_config.z_param_path}")
+            z_param = torch.load(iter_guide_config.z_param_path, map_location=device)
+        else:
+        # 2. パスがなければ、通常通りゼロから初期化
+            print("Initializing m_param and z_param from scratch.")
+            m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
+            z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
+        # m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
+        # z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
         optimizer = self.get_optimizer([m_param, z_param], iter_guide_config)
 
         all_distograms = []
