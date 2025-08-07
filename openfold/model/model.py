@@ -388,7 +388,7 @@ class AlphaFold(nn.Module):
         else:
             print(f"Running in MONOMER refinement mode.")
             n_buckets = pred_logits.shape[-1]
-            gt_bins = torch.argmax(gt_distogram, dim=-1)
+            gt_bins = gt_distogram
             loss = F.cross_entropy(
                 pred_logits.reshape(-1, n_buckets),
                 gt_bins.reshape(-1),
