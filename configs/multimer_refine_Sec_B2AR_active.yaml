@@ -9,7 +9,7 @@ fasta_dir: /work/gn46/n46001/tools/openfold/inputs/Sec_B2AR_active/
 # 事前計算済みアラインメントがあるディレクトリ
 alignment_dir: /work/gn46/n46001/tools/openfold/alignments_Sec_B2AR/
 # この実験用の出力先
-output_dir: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/prediction_results/iter1_Sec_B2AR_active
+output_dir: /work/gn46/share/do_fold/Distogram_Optimized_Fold_Oheda/prediction_results/Last_Sec_B2AR_active
 template_dir: /work/gn46/n46001/tools/openfold/database/empty_templates/
 structure_dir: /work/gn46/n46001/tools/openfold/database/pdb_mmcif/mmcif_files/
 
@@ -32,11 +32,11 @@ guide_config:
   info_dir: ${output_dir}/info
   iter_0: # 1サイクル目のリサイクリングで最適化
     opt: true                   # 最適化を有効にする
-    num_gradient_steps: 1      # 勾配降下を10ステップ実行
+    num_gradient_steps: 3      # 勾配降下を10ステップ実行
     guidance_lr: 0.01           # 学習率
 
     entropy_weight: null        # エントロピー損失は使わない
-    gt_distogram_weight: 2.0    # 正解distogram損失を有効にする
+    gt_distogram_weight: 1.0    # 正解distogram損失を有効にする
 
     # ステップ1で作成した「生の距離行列」へのパス
     # {tag}はプログラムがFASTAヘッダー名(例: FFA2)に自動で置き換えます
