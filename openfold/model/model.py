@@ -375,9 +375,13 @@ class AlphaFold(nn.Module):
          # --- build masks ---
         is_multimer = "asym_id" in feats
         if is_multimer:
+            print(f"Running in MULTIMER refinement mode.")
             asym_id = feats["asym_id"].to(device) 
             #asym_id = asym_id.to(device)
             inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
+            len_A = gt_bins.shape[0]
+            pred_logits_part = pred_logits[:len_A, :len_A, :]
+            loss_mask = torch.ones_like(gt_bins, dtype=torch.bool)
             
             if getattr(iter_guide_config, "gt_mask_path", None) is not None:
                 # Optional: user-provided boolean NxN mask (e.g., interface only)
