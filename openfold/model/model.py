@@ -373,7 +373,7 @@ class AlphaFold(nn.Module):
         except Exception:
             gt_bins = dists_to_distogram(gt_distances).long().clamp_(0, n_bins - 1)
          # --- build masks ---
-        is_multimer = "asym_id" is not None
+        is_multimer = "asym_id" in feats
         if is_multimer:
             asym_id = feats["asym_id"].to(device) 
             #asym_id = asym_id.to(device)
@@ -394,6 +394,8 @@ class AlphaFold(nn.Module):
             # Optional interface cutoff by GT distance
             r_if = getattr(iter_guide_config, "interface_cutoff", 0.0)
             if r_if and r_if > 0.0:
+                N_pred = pred_logits.shape[0]
+                subset_len = min(N_pred, gt_distances.shape[0])
                 #inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
                 inter_pair_mask = inter_pair_mask & (gt_distances[:subset_len, :subset_len] < r_if)
             # Intra mask
