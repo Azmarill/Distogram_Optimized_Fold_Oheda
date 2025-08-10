@@ -536,7 +536,7 @@ class AlphaFold(nn.Module):
         if "asym_id" in feats:
             asym_id = feats["asym_id"].to(device)
             #inter_pair_mask = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
-            inter_pair_mask_full = (asym_id_full[:, None] != asym_id_full[None, :]).to(orig_z.dtype)
+            inter_pair_mask_full = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
         else:
             #inter_pair_mask = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
             inter_pair_mask_full = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
