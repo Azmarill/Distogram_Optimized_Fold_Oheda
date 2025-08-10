@@ -373,38 +373,38 @@ class AlphaFold(nn.Module):
         except Exception:
             gt_bins = dists_to_distogram(gt_distances).long().clamp_(0, n_bins - 1)
          # --- build masks ---
-         is_multimer = "asym_id" in feats
-         if is_multimer:
-             asym_id = feats["asym_id"].to(device)
-             inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
-             if getattr(iter_guide_config, "gt_mask_path", None) is not None:
-                 # Optional: user-provided boolean NxN mask (e.g., interface only)
-                 mp = iter_guide_config.gt_mask_path.format(tag=tag)
-                 print(f"Loading pair mask from {mp}")
-                 m = torch.as_tensor(np.load(mp), device=device, dtype=torch.bool)
-                 assert m.shape == inter_pair_mask.shape
-                 inter_pair_mask = inter_pair_mask & m
-             # Optional interface cutoff by GT distance
-             r_if = getattr(iter_guide_config, "interface_cutoff", 0.0)
-             if r_if and r_if > 0.0:
-                 inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
-             # Intra mask
-             intra_pair_mask = ~ (asym_id[:, None] != asym_id[None, :])
+        is_multimer = "asym_id" in feats
+        if is_multimer:
+            asym_id = feats["asym_id"].to(device)
+            inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
+            if getattr(iter_guide_config, "gt_mask_path", None) is not None:
+                # Optional: user-provided boolean NxN mask (e.g., interface only)
+                mp = iter_guide_config.gt_mask_path.format(tag=tag)
+                print(f"Loading pair mask from {mp}")
+                m = torch.as_tensor(np.load(mp), device=device, dtype=torch.bool)
+                assert m.shape == inter_pair_mask.shape
+                inter_pair_mask = inter_pair_mask & m
+            # Optional interface cutoff by GT distance
+            r_if = getattr(iter_guide_config, "interface_cutoff", 0.0)
+            if r_if and r_if > 0.0:
+                inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
+            # Intra mask
+            intra_pair_mask = ~ (asym_id[:, None] != asym_id[None, :])
  
-             # Loss = inter CE + w_intra * intra CE  (true-structure only)
-             w_intra = getattr(iter_guide_config, "intra_anchor_weight", 0.0)
-             loss_inter = F.cross_entropy(pred_logits[inter_pair_mask],
+            # Loss = inter CE + w_intra * intra CE  (true-structure only)
+            w_intra = getattr(iter_guide_config, "intra_anchor_weight", 0.0)
+            loss_inter = F.cross_entropy(pred_logits[inter_pair_mask],
                                           gt_bins[inter_pair_mask])
-             loss = loss_inter
-             if w_intra and w_intra > 0.0:
-                 loss_intra = F.cross_entropy(pred_logits[intra_pair_mask],
-                                              gt_bins[intra_pair_mask])
-                 loss = loss + w_intra * loss_intra
-         else:
-             # Monomer: standard CE on all pairs
-             loss = F.cross_entropy(pred_logits.reshape(-1, n_bins),
-                                    gt_bins.reshape(-1))
-         return loss
+            loss = loss_inter
+            if w_intra and w_intra > 0.0:
+                loss_intra = F.cross_entropy(pred_logits[intra_pair_mask],
+                                             gt_bins[intra_pair_mask])
+                loss = loss + w_intra * loss_intra
+        else:
+            # Monomer: standard CE on all pairs
+            loss = F.cross_entropy(pred_logits.reshape(-1, n_bins),
+                                   gt_bins.reshape(-1))
+        return loss
 #         if iter_guide_config.gt_mask_path is not None:
 #             print(f"Running in MULTIMER refinement mode.")
 #             gt_mask_path = iter_guide_config.gt_mask_path.format(tag=tag)
