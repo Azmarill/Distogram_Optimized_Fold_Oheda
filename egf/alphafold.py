@@ -114,7 +114,7 @@ class AlphaFold:
         
         os.remove(tmp_fasta_path)
         return feature_dict, processed_feature_dict
-
+        
     def postprocess(self, feature_dict, processed_feature_dict, out, unrelaxed_output_path, output_directory, tag):
         # --- 1. 必要なライブラリと関数をインポート ---
         from openfold.utils.loss import compute_tm
@@ -131,17 +131,6 @@ class AlphaFold:
         is_multimer = "multimer" in self.args.config_preset
         if is_multimer and "predicted_aligned_error" in out:
             pae_logits = out["predicted_aligned_error"]
-            if pae_logits.shape[0] == 64:
-                try:
-                    bin_dim = pae_logits.shape.index(64)
-                    # 最後の次元に移動させるためのpermuteの順番を作成
-                    dims = list(range(len(pae_logits.shape)))
-                    dims.pop(bin_dim)
-                    dims.append(bin_dim)
-                    print(f"INFO: Permuting PAE logits from {pae_logits.shape} to target shape.")
-                    pae_logits = pae_logits.permute(*dims)
-                except ValueError:
-                    raise ValueError("Could not find dimension with size 64 in PAE logits.")
             ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
             iptm = ptm_output["iptm"]
             ptm = ptm_output["ptm"]
@@ -170,9 +159,11 @@ class AlphaFold:
         
         # --- 3. NumPy配列への変換とPDB/CIFオブジェクトの作成 ---
         out_np = tensor_tree_map(lambda x: np.array(x.cpu().to(torch.float32)), out)
+        processed_feature_dict_np = tensor_tree_map(lambda x: np.array(x.cpu()), processed_feature_dict)
+    
         unrelaxed_protein = prep_output(
             out_np,
-            processed_feature_dict,
+            processed_feature_dict_np,
             feature_dict,
             feature_pipeline.FeaturePipeline(self.config.data),
             self.args.config_preset,
@@ -180,73 +171,7 @@ class AlphaFold:
             self.args.subtract_plddt,
             is_multimer=is_multimer,
         )
-        
-#     def postprocess(self, feature_dict, processed_feature_dict, out, unrelaxed_output_path, output_directory, tag):
-#         from openfold.utils.loss import compute_tm
-#         import matplotlib.pyplot as plt
-#         # processed_feature_dict = tensor_tree_map(
-#         #     lambda x: np.array(x[..., -1].cpu()), processed_feature_dict
-#         # )
-#         out = tensor_tree_map(lambda x: np.array(x.cpu().to(torch.float32)), out)
-#         is_multimer = "multimer" in self.args.config_preset
 
-#         unrelaxed_protein = prep_output(
-#             out,
-#             processed_feature_dict,
-#             feature_dict,
-#             feature_pipeline.FeaturePipeline(self.config.data), 
-#             self.args.config_preset,
-#             self.args.multimer_ri_gap,
-#             self.args.subtract_plddt,
-#             is_multimer=is_multimer,
-# #            is_multimer = "multimer" in self.args.config_preset
-# #            is_multimer=isinstance(feature_dict["msa"], list) 
-#         )
-
-#         plddt = out["plddt"]
-#         mean_plddt = np.mean(plddt)
-        
-#         print("---------------------------------")
-#         print(f"CONFIDENCE SCORES for {tag}:")
-#         print(f"  pLDDT: {mean_plddt:.4f}")
-        
-#         if is_multimer and "predicted_aligned_error" in out:
-#             # PAEのlogitsを取得
-#             pae_logits = out["predicted_aligned_error"]
-            
-#             # ipTMとpTMを計算
-#             ptm_output = compute_tm(
-#                 pae_logits,
-#                 max_bin=31,
-#                 no_bins=64
-#             )
-#             iptm = ptm_output["iptm"]
-#             ptm = ptm_output["ptm"]
-            
-#             # 結果をログに出力
-#             print(f"  pTM: {ptm.item():.4f}")
-#             print(f"  ipTM: {iptm.item():.4f}")
-        
-#             # PAEを計算してファイルに保存
-#             pae = torch.nn.functional.softmax(pae_logits, dim=-1) * torch.arange(0, 64, device=pae_logits.device)
-#             pae = torch.sum(pae, dim=-1).cpu().numpy()
-#             pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
-#             np.save(pae_output_path, pae)
-#             print(f"  PAE matrix saved to: {pae_output_path}")
-            
-#             # PAEをヒートマップとして画像保存
-#             plt.figure(figsize=(10, 8))
-#             plt.imshow(pae, cmap='viridis_r')
-#             plt.colorbar(label="Predicted Aligned Error (Å)")
-#             plt.title(f"PAE for {tag}")
-#             plt.xlabel("Scored residue")
-#             plt.ylabel("Aligned residue")
-#             pae_png_path = os.path.join(output_directory, f"{tag}_pae.png")
-#             plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
-#             plt.close()
-#             print(f"  PAE heatmap saved to: {pae_png_path}")
-        
-#         print("---------------------------------")
 
         if unrelaxed_output_path.endswith('.cif'):
             unrelaxed_output_path = unrelaxed_output_path.replace(".cif", ".pdb")
