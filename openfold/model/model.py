@@ -375,7 +375,8 @@ class AlphaFold(nn.Module):
          # --- build masks ---
         is_multimer = "asym_id" is not None
         if is_multimer:
-            asym_id = asym_id.to(device)
+            asym_id = feats["asym_id"].to(device) 
+            #asym_id = asym_id.to(device)
             inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
             
             if getattr(iter_guide_config, "gt_mask_path", None) is not None:
