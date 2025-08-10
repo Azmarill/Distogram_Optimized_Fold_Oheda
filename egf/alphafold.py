@@ -115,14 +115,17 @@ class AlphaFold:
         os.remove(tmp_fasta_path)
         return feature_dict, processed_feature_dict
         
+# egf/alphafold.py の postprocess メソッドを以下に置き換え
+
     def postprocess(self, feature_dict, processed_feature_dict, out, unrelaxed_output_path, output_directory, tag):
         # --- 1. 必要なライブラリと関数をインポート ---
         from openfold.utils.loss import compute_tm
         import matplotlib.pyplot as plt
+        import numpy as np # numpyをインポート
     
         # --- 2. スコアの計算と表示 (PyTorchテンソルのまま実行) ---
-        plddt = out["plddt"].cpu().numpy()
-        mean_plddt = np.mean(plddt)
+        plddt_np = out["plddt"].cpu().numpy()
+        mean_plddt = np.mean(plddt_np)
         
         print("---------------------------------")
         print(f"CONFIDENCE SCORES for {tag}:")
@@ -131,6 +134,18 @@ class AlphaFold:
         is_multimer = "multimer" in self.args.config_preset
         if is_multimer and "predicted_aligned_error" in out:
             pae_logits = out["predicted_aligned_error"]
+            
+            # 64が最後の次元に来るように強制的に修正
+            if pae_logits.shape[-1] != 64:
+                try:
+                    bin_dim = pae_logits.shape.index(64)
+                    dims = list(range(len(pae_logits.shape)))
+                    dims.pop(bin_dim)
+                    dims.append(bin_dim)
+                    pae_logits = pae_logits.permute(*dims)
+                except ValueError:
+                    raise ValueError("Could not find dimension with size 64 in PAE logits.")
+    
             ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
             iptm = ptm_output["iptm"]
             ptm = ptm_output["ptm"]
@@ -138,8 +153,10 @@ class AlphaFold:
             print(f"  pTM: {ptm.item():.4f}")
             print(f"  ipTM: {iptm.item():.4f}")
     
-            pae = torch.nn.functional.softmax(pae_logits, dim=-1) * torch.arange(0, 64, device=pae_logits.device)
-            pae = torch.sum(pae, dim=-1).cpu().numpy()
+            pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
+            pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
+            pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
+            
             pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
             np.save(pae_output_path, pae)
             print(f"  PAE matrix saved to: {pae_output_path}")
@@ -157,13 +174,14 @@ class AlphaFold:
     
         print("---------------------------------")
         
-        # --- 3. NumPy配列への変換とPDB/CIFオブジェクトの作成 ---
+        # --- 3. NumPy配列への変換とPDBオブジェクトの作成 ---
         out_np = tensor_tree_map(lambda x: np.array(x.cpu().to(torch.float32)), out)
+        # ↓↓↓ processed_feature_dictもNumPyに変換する
         processed_feature_dict_np = tensor_tree_map(lambda x: np.array(x.cpu()), processed_feature_dict)
     
         unrelaxed_protein = prep_output(
             out_np,
-            processed_feature_dict_np,
+            processed_feature_dict_np, # ← NumPyに変換した変数を渡す
             feature_dict,
             feature_pipeline.FeaturePipeline(self.config.data),
             self.args.config_preset,
@@ -171,25 +189,16 @@ class AlphaFold:
             self.args.subtract_plddt,
             is_multimer=is_multimer,
         )
-
-
+    
+        # --- 4. 構造ファイルの書き出し ---
         if unrelaxed_output_path.endswith('.cif'):
             unrelaxed_output_path = unrelaxed_output_path.replace(".cif", ".pdb")
+            
         with open(unrelaxed_output_path, "w") as fp:
             fp.write(protein.to_pdb(unrelaxed_protein))
-
+        
         logger.info(f"Final PDB output written to {unrelaxed_output_path}")
-
-#        .cifだと書き出しが出来なくなる場合が存在するので基本的には.pdb
-#        if self.args.cif_output:
-#            cif_output_path = unrelaxed_output_path.replace(".pdb", ".cif")
-#            with open(cif_output_path, "w") as fp:
-#                fp.write(protein.to_modelcif(unrelaxed_protein))
-#            unrelaxed_output_path = cif_output_path
-#        else:
-#            with open(unrelaxed_output_path, "w") as fp:
-#                fp.write(protein.to_pdb(unrelaxed_protein))
-
+    
         if not self.args.skip_relaxation:
             logger.info(f"Running relaxation on {unrelaxed_output_path}...")
             relax_protein(
@@ -200,7 +209,6 @@ class AlphaFold:
                 tag,
                 cif_output=False,
             )
-
     def run(self, input_dict, data_dirs):
         output_dir_base = data_dirs["output_dir"]
         os.makedirs(output_dir_base, exist_ok=True)
