@@ -350,7 +350,7 @@ class AlphaFold(nn.Module):
         return entropy(pred_probs).mean()
 
     def gt_distogram_loss(
-        self, z: torch.Tensor, iter_guide_config: dict, tag: str
+        self, z: torch.Tensor, iter_guide_config: dict, tag: str, feats: dict,
     ) -> torch.Tensor:
         device = z.device
         pred_logits = self.aux_heads.distogram(z)
@@ -360,41 +360,83 @@ class AlphaFold(nn.Module):
         print(f"Loading ground truth distances from {gt_distances_path}")
         gt_distances = np.load(gt_distances_path)
         gt_distances = torch.as_tensor(gt_distances, device=device)
-        gt_distogram = dists_to_distogram(gt_distances)
+        #gt_distogram = dists_to_distogram(gt_distances)
 
-        if iter_guide_config.gt_mask_path is not None:
-            print(f"Running in MULTIMER refinement mode.")
-            gt_mask_path = iter_guide_config.gt_mask_path.format(tag=tag)
-            print(f"Loading multimer mask from {gt_mask_path}")
-
-            gt_mask = np.load(gt_mask_path)
-            gt_mask = torch.as_tensor(gt_mask, device=device, dtype=torch.bool)
-            len_A = gt_distogram.shape[0]
-            pred_logits_A_part = pred_logits[:len_A, :len_A, :]
-            mask_A_part = gt_mask[:len_A, :len_A]
-
-            print("--- DEBUG INFO ---")
-            print(f"Shape of pred_logits_A_part: {pred_logits_A_part.shape}")
-            print(f"Shape of gt_distogram: {gt_distogram.shape}")
-            print(f"Shape of mask_A_part: {mask_A_part.shape}")
-            print(f"Data type of mask_A_part: {mask_A_part.dtype}")
-            print(f"Number of True values in mask_A_part: {torch.sum(mask_A_part).item()}")
-            print("--------------------")
-
-            pred_logits_masked = pred_logits_A_part[mask_A_part]
-            gt_bins = gt_distogram[mask_A_part]
-#            gt_bins = torch.argmax(gt_distogram_masked, dim=-1)
-            loss = F.cross_entropy(pred_logits_masked, gt_bins)
-        else:
-            print(f"Running in MONOMER refinement mode.")
-            n_buckets = pred_logits.shape[-1]
-            gt_bins = gt_distogram
-            gt_bins_clamped = torch.clamp(gt_bins, min=0, max=n_buckets - 1)
-            loss = F.cross_entropy(
-                pred_logits.reshape(-1, n_buckets),
-                gt_bins_clamped.reshape(-1).long(),
+        # --- robust binning ---
+        n_bins = pred_logits.shape[-1]
+        try:
+            cfg = self.aux_heads.config.distogram
+            edges = torch.linspace(
+                cfg.first_break, cfg.last_break, cfg.num_bins - 1, device=device
             )
-        return loss
+            gt_bins = torch.bucketize(gt_distances, edges).long().clamp_(0, n_bins - 1)
+        except Exception:
+            gt_bins = dists_to_distogram(gt_distances).long().clamp_(0, n_bins - 1)
+         # --- build masks ---
+         is_multimer = "asym_id" in feats
+         if is_multimer:
+             asym_id = feats["asym_id"].to(device)
+             inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
+             if getattr(iter_guide_config, "gt_mask_path", None) is not None:
+                 # Optional: user-provided boolean NxN mask (e.g., interface only)
+                 mp = iter_guide_config.gt_mask_path.format(tag=tag)
+                 print(f"Loading pair mask from {mp}")
+                 m = torch.as_tensor(np.load(mp), device=device, dtype=torch.bool)
+                 assert m.shape == inter_pair_mask.shape
+                 inter_pair_mask = inter_pair_mask & m
+             # Optional interface cutoff by GT distance
+             r_if = getattr(iter_guide_config, "interface_cutoff", 0.0)
+             if r_if and r_if > 0.0:
+                 inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
+             # Intra mask
+             intra_pair_mask = ~ (asym_id[:, None] != asym_id[None, :])
+ 
+             # Loss = inter CE + w_intra * intra CE  (true-structure only)
+             w_intra = getattr(iter_guide_config, "intra_anchor_weight", 0.0)
+             loss_inter = F.cross_entropy(pred_logits[inter_pair_mask],
+                                          gt_bins[inter_pair_mask])
+             loss = loss_inter
+             if w_intra and w_intra > 0.0:
+                 loss_intra = F.cross_entropy(pred_logits[intra_pair_mask],
+                                              gt_bins[intra_pair_mask])
+                 loss = loss + w_intra * loss_intra
+         else:
+             # Monomer: standard CE on all pairs
+             loss = F.cross_entropy(pred_logits.reshape(-1, n_bins),
+                                    gt_bins.reshape(-1))
+         return loss
+#         if iter_guide_config.gt_mask_path is not None:
+#             print(f"Running in MULTIMER refinement mode.")
+#             gt_mask_path = iter_guide_config.gt_mask_path.format(tag=tag)
+#             print(f"Loading multimer mask from {gt_mask_path}")
+
+#             gt_mask = np.load(gt_mask_path)
+#             gt_mask = torch.as_tensor(gt_mask, device=device, dtype=torch.bool)
+#             len_A = gt_distogram.shape[0]
+#             pred_logits_A_part = pred_logits[:len_A, :len_A, :]
+#             mask_A_part = gt_mask[:len_A, :len_A]
+
+#             print("--- DEBUG INFO ---")
+#             print(f"Shape of pred_logits_A_part: {pred_logits_A_part.shape}")
+#             print(f"Shape of gt_distogram: {gt_distogram.shape}")
+#             print(f"Shape of mask_A_part: {mask_A_part.shape}")
+#             print(f"Data type of mask_A_part: {mask_A_part.dtype}")
+#             print(f"Number of True values in mask_A_part: {torch.sum(mask_A_part).item()}")
+#             print("--------------------")
+#
+#             pred_logits_masked = pred_logits_A_part[mask_A_part]
+#             gt_bins = gt_distogram[mask_A_part]
+#             gt_bins = torch.argmax(gt_distogram_masked, dim=-1)
+#             loss = F.cross_entropy(pred_logits_masked, gt_bins)
+#         else:
+#             print(f"Running in MONOMER refinement mode.")
+#             n_buckets = pred_logits.shape[-1]
+#             gt_bins = gt_distogram
+#             gt_bins_clamped = torch.clamp(gt_bins, min=0, max=n_buckets - 1)
+#             loss = F.cross_entropy(
+#                 pred_logits.reshape(-1, n_buckets),
+#                 gt_bins_clamped.reshape(-1).long(),
+#             )
 
     def run_evoformer(
         self,
@@ -467,15 +509,40 @@ class AlphaFold(nn.Module):
             z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
         # m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
         # z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
-        optimizer = self.get_optimizer([m_param, z_param], iter_guide_config)
+        #optimizer = self.get_optimizer([m_param, z_param], iter_guide_config)
+        optimize_m = getattr(iter_guide_config, "optimize_m", False)
+        params = [z_param] + ([m_param] if optimize_m else [])
+        optimizer = self.get_optimizer(params, iter_guide_config)
+
+        # --- inter-pair & interface masks for projection ---
+        if "asym_id" in feats:
+            asym_id = feats["asym_id"].to(device)
+            inter_pair_mask = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
+        else:
+            inter_pair_mask = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
+        inter_pair_mask_3d = inter_pair_mask[..., None]
+        # optional: interface residues (any inter-chain contact within cutoff)
+        interface_cutoff = getattr(iter_guide_config, "interface_cutoff", 0.0)
+        if interface_cutoff and hasattr(iter_guide_config, "gt_distances_path"):
+            D = torch.as_tensor(
+                np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
+                device=device,
+            )
+            interface_mask_pairs = (inter_pair_mask.bool() & (D < interface_cutoff))
+            interface_res_mask = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
+        else:
+            interface_res_mask = torch.ones(orig_m.shape[-2], device=device, dtype=torch.bool)
 
         all_distograms = []
         all_sm_outputs = []
         all_metrics = []
         for i in range(iter_guide_config.num_gradient_steps):
             metrics = []
-            m_input = orig_m + m_param
-            z_input = orig_z + z_param
+            if optimize_m:
+                m_input = orig_m + m_param * interface_res_mask[None, :, None].to(orig_m.dtype)
+            else:
+                 m_input = orig_m
+            z_input = orig_z + z_param * inter_pair_mask_3d
 
             print(f"Step {i}")
             start = time.time()
@@ -556,7 +623,7 @@ class AlphaFold(nn.Module):
 
             if iter_guide_config.gt_distogram_weight is not None:
                 gt_distogram_loss = self.gt_distogram_loss(
-                    new_z, iter_guide_config, tag=feats["tag"]
+                    new_z, iter_guide_config, tag=feats["tag"], feats=feats
                 )
                 total_loss = (
                     total_loss
