@@ -132,7 +132,16 @@ class AlphaFold:
         if is_multimer and "predicted_aligned_error" in out:
             pae_logits = out["predicted_aligned_error"]
             if pae_logits.shape[0] == 64:
-                pae_logits = pae_logits.permute(1, 2, 0)
+                try:
+                    bin_dim = pae_logits.shape.index(64)
+                    # 最後の次元に移動させるためのpermuteの順番を作成
+                    dims = list(range(len(pae_logits.shape)))
+                    dims.pop(bin_dim)
+                    dims.append(bin_dim)
+                    print(f"INFO: Permuting PAE logits from {pae_logits.shape} to target shape.")
+                    pae_logits = pae_logits.permute(*dims)
+                except ValueError:
+                    raise ValueError("Could not find dimension with size 64 in PAE logits.")
             ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
             iptm = ptm_output["iptm"]
             ptm = ptm_output["ptm"]
