@@ -116,6 +116,8 @@ class AlphaFold:
         return feature_dict, processed_feature_dict
 
     def postprocess(self, feature_dict, processed_feature_dict, out, unrelaxed_output_path, output_directory, tag):
+        from openfold.utils.loss import compute_tm
+        import matplotlib.pyplot as plt
         processed_feature_dict = tensor_tree_map(
             lambda x: np.array(x[..., -1].cpu()), processed_feature_dict
         )
@@ -134,6 +136,51 @@ class AlphaFold:
 #            is_multimer = "multimer" in self.args.config_preset
 #            is_multimer=isinstance(feature_dict["msa"], list) 
         )
+
+        plddt = out["plddt"]
+        mean_plddt = np.mean(plddt)
+        
+        print("---------------------------------")
+        print(f"CONFIDENCE SCORES for {tag}:")
+        print(f"  pLDDT: {mean_plddt:.4f}")
+        
+        if is_multimer and "predicted_aligned_error" in out:
+            # PAEのlogitsを取得
+            pae_logits = out["predicted_aligned_error"]
+            
+            # ipTMとpTMを計算
+            ptm_output = compute_tm(
+                pae_logits,
+                max_bin=31,
+                no_bins=64
+            )
+            iptm = ptm_output["iptm"]
+            ptm = ptm_output["ptm"]
+            
+            # 結果をログに出力
+            print(f"  pTM: {ptm.item():.4f}")
+            print(f"  ipTM: {iptm.item():.4f}")
+        
+            # PAEを計算してファイルに保存
+            pae = torch.nn.functional.softmax(pae_logits, dim=-1) * torch.arange(0, 64, device=pae_logits.device)
+            pae = torch.sum(pae, dim=-1).cpu().numpy()
+            pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
+            np.save(pae_output_path, pae)
+            print(f"  PAE matrix saved to: {pae_output_path}")
+            
+            # PAEをヒートマップとして画像保存
+            plt.figure(figsize=(10, 8))
+            plt.imshow(pae, cmap='viridis_r')
+            plt.colorbar(label="Predicted Aligned Error (Å)")
+            plt.title(f"PAE for {tag}")
+            plt.xlabel("Scored residue")
+            plt.ylabel("Aligned residue")
+            pae_png_path = os.path.join(output_directory, f"{tag}_pae.png")
+            plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  PAE heatmap saved to: {pae_png_path}")
+        
+        print("---------------------------------")
 
         if unrelaxed_output_path.endswith('.cif'):
             unrelaxed_output_path = unrelaxed_output_path.replace(".cif", ".pdb")
