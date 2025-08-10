@@ -373,33 +373,51 @@ class AlphaFold(nn.Module):
         except Exception:
             gt_bins = dists_to_distogram(gt_distances).long().clamp_(0, n_bins - 1)
          # --- build masks ---
-        is_multimer = "asym_id" in feats
+        is_multimer = "asym_id" is not None
         if is_multimer:
-            asym_id = feats["asym_id"].to(device)
+            asym_id = asym_id.to(device)
             inter_pair_mask = (asym_id[:, None] != asym_id[None, :])
+            
             if getattr(iter_guide_config, "gt_mask_path", None) is not None:
                 # Optional: user-provided boolean NxN mask (e.g., interface only)
                 mp = iter_guide_config.gt_mask_path.format(tag=tag)
                 print(f"Loading pair mask from {mp}")
+                #m = torch.as_tensor(np.load(mp), device=device, dtype=torch.bool)
+                #assert m.shape == inter_pair_mask.shape
                 m = torch.as_tensor(np.load(mp), device=device, dtype=torch.bool)
-                assert m.shape == inter_pair_mask.shape
+                if m.shape != inter_pair_mask.shape:
+                    m = m[subset_start:subset_end, subset_start:subset_end]
+                assert m.shape == inter_pair_mask.shape, \
+                    f"mask {m.shape} vs inter_pair_mask {inter_pair_mask.shape}"
                 inter_pair_mask = inter_pair_mask & m
             # Optional interface cutoff by GT distance
             r_if = getattr(iter_guide_config, "interface_cutoff", 0.0)
             if r_if and r_if > 0.0:
-                inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
+                #inter_pair_mask = inter_pair_mask & (gt_distances < r_if)
+                inter_pair_mask = inter_pair_mask & (gt_distances[:subset_len, :subset_len] < r_if)
             # Intra mask
             intra_pair_mask = ~ (asym_id[:, None] != asym_id[None, :])
  
             # Loss = inter CE + w_intra * intra CE  (true-structure only)
             w_intra = getattr(iter_guide_config, "intra_anchor_weight", 0.0)
-            loss_inter = F.cross_entropy(pred_logits[inter_pair_mask],
-                                          gt_bins[inter_pair_mask])
-            loss = loss_inter
+            loss = None
+            #loss_inter = F.cross_entropy(pred_logits[inter_pair_mask],
+                                          #gt_bins[inter_pair_mask])
+            if inter_pair_mask.any():
+                loss_inter = F.cross_entropy(pred_logits[inter_pair_mask], gt_bins[inter_pair_mask])
+                loss = loss_inter
+            #loss = loss_inter
             if w_intra and w_intra > 0.0:
-                loss_intra = F.cross_entropy(pred_logits[intra_pair_mask],
-                                             gt_bins[intra_pair_mask])
-                loss = loss + w_intra * loss_intra
+                diag = torch.eye(subset_len, dtype=torch.bool, device=device)
+                intra_mask_eff = intra_pair_mask & (~diag)
+                if intra_mask_eff.any():
+                    loss_intra = F.cross_entropy(pred_logits[intra_mask_eff], gt_bins[intra_mask_eff])
+                    loss = loss_intra if loss is None else loss + w_intra * loss_intra
+                if loss is None:
+                    raise ValueError("No valid pairs after masking. Check gt_subset_* or masks.")
+                #loss_intra = F.cross_entropy(pred_logits[intra_pair_mask],
+                                             #gt_bins[intra_pair_mask])
+                #loss = loss + w_intra * loss_intra
         else:
             # Monomer: standard CE on all pairs
             loss = F.cross_entropy(pred_logits.reshape(-1, n_bins),
@@ -517,21 +535,38 @@ class AlphaFold(nn.Module):
         # --- inter-pair & interface masks for projection ---
         if "asym_id" in feats:
             asym_id = feats["asym_id"].to(device)
-            inter_pair_mask = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
+            #inter_pair_mask = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
+            inter_pair_mask_full = (asym_id_full[:, None] != asym_id_full[None, :]).to(orig_z.dtype)
         else:
-            inter_pair_mask = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
-        inter_pair_mask_3d = inter_pair_mask[..., None]
+            #inter_pair_mask = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
+            inter_pair_mask_full = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
+        inter_pair_mask_3d = inter_pair_mask_full[..., None]
         # optional: interface residues (any inter-chain contact within cutoff)
         interface_cutoff = getattr(iter_guide_config, "interface_cutoff", 0.0)
+        N_pred = orig_z.shape[0]
+        full_interface_res_mask = torch.zeros(N_pred, dtype=torch.bool, device=device)
         if interface_cutoff and hasattr(iter_guide_config, "gt_distances_path"):
-            D = torch.as_tensor(
-                np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
-                device=device,
-            )
-            interface_mask_pairs = (inter_pair_mask.bool() & (D < interface_cutoff))
-            interface_res_mask = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
+            D = torch.as_tensor(np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
+                                device=device)  # [N_gt, N_gt]
+            subset_len = getattr(iter_guide_config, "gt_subset_len", None)
+            if subset_len is None:
+                subset_len = min(N_pred, D.shape[0])
+            subset_start = getattr(iter_guide_config, "gt_subset_start", 0)
+            subset_end = subset_start + subset_len
+            D_sub = D[:subset_len, :subset_len]
+            inter_pair_mask_sub = inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end].bool()
+            interface_mask_pairs = inter_pair_mask_sub & (D_sub < interface_cutoff)
+            interface_res_mask_sub = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
+            full_interface_res_mask[subset_start:subset_end] = interface_res_mask_sub
+            #D = torch.as_tensor(
+                #np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
+                #device=device,
+            #)
+            #interface_mask_pairs = (inter_pair_mask.bool() & (D < interface_cutoff))
+            #interface_res_mask = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
         else:
-            interface_res_mask = torch.ones(orig_m.shape[-2], device=device, dtype=torch.bool)
+            #interface_res_mask = torch.ones(orig_m.shape[-2], device=device, dtype=torch.bool)
+            full_interface_res_mask[:] = True
 
         all_distograms = []
         all_sm_outputs = []
@@ -539,9 +574,11 @@ class AlphaFold(nn.Module):
         for i in range(iter_guide_config.num_gradient_steps):
             metrics = []
             if optimize_m:
-                m_input = orig_m + m_param * interface_res_mask[None, :, None].to(orig_m.dtype)
+                #m_input = orig_m + m_param * interface_res_mask[None, :, None].to(orig_m.dtype)
+                m_input = orig_m + m_param * full_interface_res_mask[None, :, None].to(orig_m.dtype)
             else:
                  m_input = orig_m
+            #z_input = orig_z + z_param * inter_pair_mask_3d
             z_input = orig_z + z_param * inter_pair_mask_3d
 
             print(f"Step {i}")
