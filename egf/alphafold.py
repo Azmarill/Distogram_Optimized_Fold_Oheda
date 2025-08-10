@@ -131,6 +131,8 @@ class AlphaFold:
         is_multimer = "multimer" in self.args.config_preset
         if is_multimer and "predicted_aligned_error" in out:
             pae_logits = out["predicted_aligned_error"]
+            if pae_logits.shape[0] == 64:
+                pae_logits = pae_logits.permute(1, 2, 0)
             ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
             iptm = ptm_output["iptm"]
             ptm = ptm_output["ptm"]
