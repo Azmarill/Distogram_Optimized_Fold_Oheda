@@ -169,7 +169,7 @@ def prep_output(
     if subtract_plddt:
         plddt = plddt - out["plddt_baseline"]
     
-    plddt_b_factors = np.repeat(
+    plddt_b_factors = numpy.repeat(
         plddt[..., None], residue_constants.atom_type_num, axis=-1
     )
 
@@ -192,7 +192,7 @@ def prep_output(
         )
     else:
         num_res = final_aatype.shape[0]
-        chain_index = np.zeros(num_res, dtype=np.int32)
+        chain_index = numpy.zeros(num_res, dtype=numpy.int32)
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
