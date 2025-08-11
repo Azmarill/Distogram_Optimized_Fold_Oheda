@@ -180,7 +180,11 @@ def prep_output(
 
     if is_multimer:
         # chain_index も生の feature_dict から取得する
-        final_chain_index = feature_dict["chain_index"]
+        if "chain_index" not in feature_dict:
+            print("INFO: 'chain_index' not found in feature_dict, creating from 'asym_id'.")
+            final_chain_index = feature_dict["asym_id"] - 1
+        else:
+            final_chain_index = feature_dict["chain_index"]
 
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
