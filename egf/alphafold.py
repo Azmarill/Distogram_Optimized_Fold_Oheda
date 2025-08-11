@@ -122,6 +122,8 @@ class AlphaFold:
         from openfold.utils.loss import compute_tm
         import matplotlib.pyplot as plt
         import numpy as np # numpyをインポート
+        import torch
+        import os
     
         # --- 2. スコアの計算と表示 (PyTorchテンソルのまま実行) ---
         plddt_np = out["plddt"].cpu().numpy()
@@ -130,37 +132,70 @@ class AlphaFold:
         print("---------------------------------")
         print(f"CONFIDENCE SCORES for {tag}:")
         print(f"  pLDDT: {mean_plddt:.4f}")
-    
+        #---------------------------------------------------------------------
         is_multimer = "multimer" in self.args.config_preset
         if is_multimer and "predicted_aligned_error" in out:
-            pae_logits = out["predicted_aligned_error"]
-            
-            # 64が最後の次元に来るように強制的に修正
-            if pae_logits.shape[-1] != 64:
-                try:
-                    bin_dim = pae_logits.shape.index(64)
-                    dims = list(range(len(pae_logits.shape)))
-                    dims.pop(bin_dim)
-                    dims.append(bin_dim)
-                    pae_logits = pae_logits.permute(*dims)
-                except ValueError:
-                    raise ValueError("Could not find dimension with size 64 in PAE logits.")
-    
-            ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
-            iptm = ptm_output["iptm"]
-            ptm = ptm_output["ptm"]
-            
-            print(f"  pTM: {ptm.item():.4f}")
-            print(f"  ipTM: {iptm.item():.4f}")
-    
-            pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
-            pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
-            pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
-            
+            pae_obj = out["predicted_aligned_error"]
+        
+            # 1) 辞書形式（logits/breaks）にも対応
+            breaks = None
+            if isinstance(pae_obj, dict):
+                pae_logits = pae_obj.get("logits", None)
+                breaks = pae_obj.get("breaks", None)
+                if pae_logits is None:
+                    raise ValueError("predicted_aligned_error is a dict but has no 'logits'.")
+            else:
+                pae_logits = pae_obj
+        
+            # 2) 4D（バッチ次元あり）は squeeze、2D は “すでにPAE(Å)” とみなす
+            if pae_logits.ndim == 4 and pae_logits.shape[0] == 1:
+                pae_logits = pae_logits.squeeze(0)
+        
+            if pae_logits.ndim == 2:
+                # すでに Å の PAE 行列が渡ってきているケース
+                pae = pae_logits.detach().cpu().numpy()
+                print("  (predicted_aligned_error is already a PAE matrix; skipping compute_tm)")
+                ptm_output = None
+            elif pae_logits.ndim == 3:
+                # 3) ビン数は自動取得
+                no_bins = pae_logits.shape[-1]
+        
+                # 4) pTM/ipTM を logits から計算（no_bins を合わせる）
+                max_bin = getattr(
+                    getattr(self.config.model.heads, "predicted_aligned_error", object()),
+                    "max_bin", 31
+                )
+                ptm_output = compute_tm(pae_logits, max_bin=max_bin, no_bins=no_bins)
+                iptm = ptm_output.get("iptm", None)
+                ptm = ptm_output.get("ptm", None)
+                if ptm is not None:  print(f"  pTM: {ptm.item():.4f}")
+                if iptm is not None: print(f"  ipTM: {iptm.item():.4f}")
+        
+                # 5) PAE(Å) の期待値を計算（ビン中心で重み付け）
+                with torch.no_grad():
+                    probs = torch.nn.functional.softmax(pae_logits, dim=-1)
+                    if breaks is not None:
+                        # breaks はビン“境界”。中心は (edge[i]+edge[i+1])/2
+                        edges = breaks.to(pae_logits.device)
+                        # 一般に len(edges) = no_bins-1
+                        if edges.shape[-1] == no_bins - 1:
+                            centers = 0.5 * (edges[..., :-1] + edges[..., 1:])
+                        else:
+                            # 念のためのフォールバック
+                            edges = torch.linspace(0, max_bin, steps=no_bins+1, device=pae_logits.device, dtype=pae_logits.dtype)
+                            centers = 0.5 * (edges[:-1] + edges[1:])
+                    else:
+                        edges = torch.linspace(0, max_bin, steps=no_bins+1, device=pae_logits.device, dtype=pae_logits.dtype)
+                        centers = 0.5 * (edges[:-1] + edges[1:])
+                    pae = (probs * centers).sum(dim=-1).cpu().numpy()
+            else:
+                raise ValueError(f"Unexpected predicted_aligned_error shape: {tuple(pae_logits.shape)}")
+        
+            # 6) 保存と可視化（共通）
             pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
             np.save(pae_output_path, pae)
             print(f"  PAE matrix saved to: {pae_output_path}")
-            
+        
             plt.figure(figsize=(10, 8))
             plt.imshow(pae, cmap='viridis_r')
             plt.colorbar(label="Predicted Aligned Error (Å)")
@@ -171,6 +206,47 @@ class AlphaFold:
             plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
             plt.close()
             print(f"  PAE heatmap saved to: {pae_png_path}")
+        #---------------------------------------------------------------------
+        # is_multimer = "multimer" in self.args.config_preset
+        # if is_multimer and "predicted_aligned_error" in out:
+        #     pae_logits = out["predicted_aligned_error"]
+            
+        #     # 64が最後の次元に来るように強制的に修正
+        #     if pae_logits.shape[-1] != 64:
+        #         try:
+        #             bin_dim = pae_logits.shape.index(64)
+        #             dims = list(range(len(pae_logits.shape)))
+        #             dims.pop(bin_dim)
+        #             dims.append(bin_dim)
+        #             pae_logits = pae_logits.permute(*dims)
+        #         except ValueError:
+        #             raise ValueError("Could not find dimension with size 64 in PAE logits.")
+    
+        #     ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
+        #     iptm = ptm_output["iptm"]
+        #     ptm = ptm_output["ptm"]
+            
+        #     print(f"  pTM: {ptm.item():.4f}")
+        #     print(f"  ipTM: {iptm.item():.4f}")
+    
+        #     pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
+        #     pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
+        #     pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
+            
+        #     pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
+        #     np.save(pae_output_path, pae)
+        #     print(f"  PAE matrix saved to: {pae_output_path}")
+            
+        #     plt.figure(figsize=(10, 8))
+        #     plt.imshow(pae, cmap='viridis_r')
+        #     plt.colorbar(label="Predicted Aligned Error (Å)")
+        #     plt.title(f"PAE for {tag}")
+        #     plt.xlabel("Scored residue")
+        #     plt.ylabel("Aligned residue")
+        #     pae_png_path = os.path.join(output_directory, f"{tag}_pae.png")
+        #     plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
+        #     plt.close()
+        #     print(f"  PAE heatmap saved to: {pae_png_path}")
     
         print("---------------------------------")
         
