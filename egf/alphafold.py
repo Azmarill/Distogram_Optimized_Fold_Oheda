@@ -192,18 +192,13 @@ class AlphaFold:
     
         # ipTM/pTM/pAEの計算と表示
         is_multimer = "multimer" in self.args.config_preset
-        pae_logits = out.get("predicted_aligned_error", out.get("pae_logits", None))
+        
+        # モデルの出力から "pae_logits" を探す。なければNone
+        pae_logits = out.get("pae_logits", None)
         
         if is_multimer and pae_logits is not None:
             if pae_logits.shape[-1] != 64:
-                try:
-                    bin_dim = pae_logits.shape.index(64)
-                    dims = list(range(len(pae_logits.shape)))
-                    dims.pop(bin_dim)
-                    dims.append(bin_dim)
-                    pae_logits = pae_logits.permute(*dims)
-                except ValueError:
-                    raise ValueError(f"Could not find dimension with size 64 in PAE logits. Actual shape: {pae_logits.shape}")
+                raise ValueError(f"PAE logits have incorrect shape: {pae_logits.shape}. Expected 64 bins.")
     
             ptm_output = compute_tm(pae_logits, max_bin=31, no_bins=64)
             iptm = ptm_output["iptm"]
@@ -216,6 +211,7 @@ class AlphaFold:
             pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
             pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
             pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
+            
             pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
             np.save(pae_output_path, pae)
             print(f"  PAE matrix saved to: {pae_output_path}")
@@ -231,6 +227,9 @@ class AlphaFold:
             plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
             plt.close()
             print(f"  PAE heatmap saved to: {pae_png_path}")
+        elif is_multimer:
+            print("  ipTM/pTM: Not calculated (pae_logits not found in model output).")
+    
     
         print("---------------------------------")
         
