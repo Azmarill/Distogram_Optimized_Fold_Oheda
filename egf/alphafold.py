@@ -39,14 +39,15 @@ torch.set_grad_enabled(False)
 def _fix_chain_index(prot, processed_feature_dict_np=None):
     import numpy as np
     from dataclasses import is_dataclass, replace
+
     ci = np.asarray(prot.chain_index)
 
-    # (N,1) や (1,N) を 1D に
+    # (N,1) / (1,N) → (N,)
     if ci.ndim == 2 and ci.shape[-1] == 1:
         ci = ci.reshape(-1)
     elif ci.ndim == 2 and ci.shape[0] == 1:
         ci = ci.squeeze(0)
-    # (N,C) の one-hot/カテゴリ表現は argmax → 1D
+    # (N,C) の one-hot → argmax（or features の 1D asym_id を優先）
     elif ci.ndim == 2 and ci.shape[-1] > 1:
         if processed_feature_dict_np is not None and "asym_id" in processed_feature_dict_np:
             asym = np.asarray(processed_feature_dict_np["asym_id"])
@@ -62,14 +63,15 @@ def _fix_chain_index(prot, processed_feature_dict_np=None):
 
     ci = ci.astype(np.int32, copy=False)
 
-    # namedtuple でも dataclass でも対応
-    if hasattr(prot, "_replace"):  # namedtuple(OpenFold Protein)
-        prot = prot._replace(chain_index=ci)
+    # ← ここが重要：frozen dataclass なら replace、一部フォークの namedtuple なら _replace
+    if is_dataclass(prot):
+        return replace(prot, chain_index=ci)
     elif hasattr(prot, "_replace"):
-        prot = prot._replace(chain_index=ci)
+        return prot._replace(chain_index=ci)
     else:
+        # 非frozenな型の場合のみ代入
         prot.chain_index = ci
-    return prot
+        return prot
 
 class AlphaFold:
     def __init__(self, args, guide_config, full_config=None):
