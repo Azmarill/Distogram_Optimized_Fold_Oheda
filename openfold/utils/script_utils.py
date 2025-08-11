@@ -171,6 +171,7 @@ def prep_output(
     )
 
     aatype_reshaped = processed_feature_dict["aatype"].reshape(-1)
+    residue_index_reshaped = processed_feature_dict["residue_index"].reshape(-1) + 1
 
     if is_multimer:
 #        atom_mask = processed_feature_dict["atom_mask"]
