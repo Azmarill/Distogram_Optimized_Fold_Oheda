@@ -163,14 +163,6 @@ class AlphaFold:
         
         os.remove(tmp_fasta_path)
         return feature_dict, processed_feature_dict
-        
-    # 使い方：to_pdb の直前で
-    # unrelaxed_protein = _fix_chain_index(unrelaxed_protein, processed_feature_dict_np)
-    
-    # # 念のため
-    # assert unrelaxed_protein.chain_index.ndim == 1
-    
-# egf/alphafold.py の postprocess メソッドを以下に置き換え
 
     def postprocess(self, feature_dict, processed_feature_dict, out, unrelaxed_output_path, output_directory, tag):
         # --- 1. 必要なライブラリと関数をインポート ---
@@ -193,9 +185,6 @@ class AlphaFold:
         # ipTM/pTM/pAEの計算と表示
         is_multimer = "multimer" in self.args.config_preset
         
-        # モデルの出力から "pae_logits" を探す。なければNone
-        # print("Model output keys:", out.keys())
-        # pae_logits = out.get("pae_logits", None)
         pae = out.get("predicted_aligned_error", None)
         
         if is_multimer and pae is not None:
