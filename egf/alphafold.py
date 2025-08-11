@@ -178,20 +178,23 @@ class AlphaFold:
         import matplotlib.pyplot as plt
         import numpy as np
     
-        # --- 2. スコアの計算と表示 (PyTorchテンソルのまま実行) ---
-        plddt = out["plddt"].cpu().numpy()
-        mean_plddt = np.mean(plddt)
-        
+        # --- 2. スコアの計算と表示 ---
         print("---------------------------------")
         print(f"CONFIDENCE SCORES for {tag}:")
-        print(f"  pLDDT: {mean_plddt:.4f}")
+        
+        # pLDDTの計算と表示
+        if "plddt" in out:
+            plddt = out["plddt"].cpu().numpy()
+            mean_plddt = np.mean(plddt)
+            print(f"  pLDDT: {mean_plddt:.4f}")
+        else:
+            print("  pLDDT: Not found in output.")
     
+        # ipTM/pTM/pAEの計算と表示
         is_multimer = "multimer" in self.args.config_preset
-        if is_multimer and "predicted_aligned_error" in out and "pae_logits" in out:
-            # 正しいlogitsを "pae_logits" から取得
-            pae_logits = out["pae_logits"]
-            
-            # 64が最後の次元に来るように強制的に修正
+        pae_logits = out.get("predicted_aligned_error", out.get("pae_logits", None))
+        
+        if is_multimer and pae_logits is not None:
             if pae_logits.shape[-1] != 64:
                 try:
                     bin_dim = pae_logits.shape.index(64)
@@ -213,7 +216,6 @@ class AlphaFold:
             pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
             pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
             pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
-            
             pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
             np.save(pae_output_path, pae)
             print(f"  PAE matrix saved to: {pae_output_path}")
