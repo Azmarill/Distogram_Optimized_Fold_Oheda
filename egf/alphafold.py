@@ -194,6 +194,7 @@ class AlphaFold:
         is_multimer = "multimer" in self.args.config_preset
         
         # モデルの出力から "pae_logits" を探す。なければNone
+        print("Model output keys:", out.keys())
         pae_logits = out.get("pae_logits", None)
         
         if is_multimer and pae_logits is not None:
