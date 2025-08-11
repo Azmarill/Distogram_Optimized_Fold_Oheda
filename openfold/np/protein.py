@@ -245,9 +245,13 @@ def from_proteinnet_string(proteinnet_str: str) -> Protein:
 #         f"{chain_name:>1}{residue_index:>4}"
 #     )
 
+# def _chain_end_str(atom_index, res_name, chain_index, residue_index):
+#     chain_name = chr(ord('A') + chain_index.item() - 1)
+#     return f"TER   {atom_index:>5}      {res_name:>3} {chain_name:>1}{residue_index.item():>4}"
+
 def _chain_end_str(atom_index, res_name, chain_index, residue_index):
-    chain_name = chr(ord('A') + chain_index.item() - 1)
-    return f"TER   {atom_index:>5}      {res_name:>3} {chain_name:>1}{residue_index.item():>4}"
+    chain_id = chr(ord('A') + chain_index.item())
+    return f"TER   {atom_index:>5}      {res_name:>3} {chain_id:>1}{residue_index.item():>4}"
 
 def get_pdb_headers(prot: Protein, chain_id: int = 0) -> Sequence[str]:
     pdb_headers = []
@@ -318,152 +322,223 @@ def add_pdb_headers(prot: Protein, pdb_str: str) -> str:
 
     return "\n".join(out_pdb_lines)
 
-
 def to_pdb(prot: Protein) -> str:
-    """Converts a `Protein` instance to a PDB string.
-
-    Args:
-      prot: The protein to convert to PDB.
-
-    Returns:
-      PDB string.
-    """
-    restypes = residue_constants.restypes + ["X"]
+    """Converts a `Protein` instance to a PDB string."""
+    restypes = residue_constants.restypes
     res_1to3 = lambda r: residue_constants.restype_1to3.get(restypes[r], "UNK")
     atom_types = residue_constants.atom_types
-
+    
     pdb_lines = []
-
+    
     atom_mask = prot.atom_mask
     aatype = prot.aatype
     atom_positions = prot.atom_positions
     residue_index = prot.residue_index.astype(np.int32)
-    b_factors = prot.b_factors
     chain_index = prot.chain_index.astype(np.int32)
-
+    b_factors = prot.b_factors
+    
     if np.any(aatype > residue_constants.restype_num):
-        raise ValueError("Invalid aatypes.")
-
-    # Construct a mapping from chain integer indices to chain ID strings.
-    chain_ids = {}
-    for i in np.unique(chain_index):  # np.unique gives sorted output.
-        if i >= PDB_MAX_CHAINS:
-            raise ValueError(
-                f"The PDB format supports at most {PDB_MAX_CHAINS} chains."
-            )
-        chain_ids[i] = PDB_CHAIN_IDS[i]
-
-    headers = get_pdb_headers(prot)
-    if len(headers) > 0:
-        pdb_lines.extend(headers)
-
+        raise ValueError("Invalid aatype.")
+    
     pdb_lines.append("MODEL     1")
-    n = aatype.shape[0]
     atom_index = 1
-    last_chain_index = chain_index[0]
     prev_chain_index = 0
-    chain_tags = string.ascii_uppercase
-
     # Add all atom sites.
     for i in range(aatype.shape[0]):
-        # Close the previous chain if in a multichain PDB.
-        if last_chain_index != chain_index[i]:
-            pdb_lines.append(
-                _chain_end(
-                    atom_index,
-                    res_1to3(aatype[i - 1]),
-                    chain_ids[chain_index[i - 1]],
-                    residue_index[i - 1],
+        # Close the chain if in a new chain.
+        if chain_index[i] != prev_chain_index:
+            if i > 0: # Avoid TER record at the beginning
+                pdb_lines.append(
+                    _chain_end_str(
+                        atom_index - 1,
+                        res_1to3(aatype[i - 1]),
+                        chain_index[i-1],
+                        residue_index[i-1]
+                    )
                 )
-            )
-            last_chain_index = chain_index[i]
-            atom_index += 1  # Atom index increases at the TER symbol.
+            prev_chain_index = chain_index[i]
 
-        res_name_3 = res_1to3(aatype[i])
+        res_name = res_1to3(aatype[i])
         for atom_name, pos, mask, b_factor in zip(
             atom_types, atom_positions[i], atom_mask[i], b_factors[i]
         ):
             if mask < 0.5:
                 continue
-
+            
             record_type = "ATOM"
             name = atom_name if len(atom_name) == 4 else f" {atom_name}"
             alt_loc = ""
             insertion_code = ""
             occupancy = 1.00
-            element = atom_name[0]  # Protein supports only C, N, O, S, this works.
+            element = atom_name[0]
             charge = ""
-            # --- ここが正しいデバッグプリントの場所 ---
-            # print("--- DEBUG INFO ---")
-            # print(f"residue_index[i]: {type(residue_index[i])}, shape: {getattr(residue_index[i], 'shape', 'N/A')}, value: {residue_index[i]}")
-            # print(f"chain_index[i]: {type(chain_index[i])}, shape: {getattr(chain_index[i], 'shape', 'N/A')}, value: {chain_index[i]}")
-            # print("--------------------")
-            # print("--- DEBUG INFO ---")
-            # print(f"record_type: {type(record_type)}, value: {record_type}")
-            # print(f"atom_index: {type(atom_index)}, value: {atom_index}")
-            # print(f"name: {type(name)}, value: {name}")
-            # print(f"alt_loc: {type(alt_loc)}, value: {alt_loc}")
-            # print(f"res_name: {type(res_name)}, value: {res_name}")
-            # print(f"chain_index[i]: {type(chain_index[i])}, value: {chain_index[i]}")
-            # print(f"residue_index[i]: {type(residue_index[i])}, value: {residue_index[i]}")
-            # print(f"insertion_code: {type(insertion_code)}, value: {insertion_code}")
-            # print(f"pos[0]: {type(pos[0])}, value: {pos[0]}")
-            # print(f"pos[1]: {type(pos[1])}, value: {pos[1]}")
-            # print(f"pos[2]: {type(pos[2])}, value: {pos[2]}")
-            # print(f"occupancy: {type(occupancy)}, value: {occupancy}")
-            # print(f"b_factor: {type(b_factor)}, value: {b_factor}")
-            # print(f"element: {type(element)}, value: {element}")
-            # print(f"charge: {type(charge)}, value: {charge}")
-            # print("--------------------")
+            
+            # 鎖名を番号からアルファベットに変換 (A, B, C...)
+            chain_id = chr(ord('A') + chain_index[i].item())
 
-            chain_tag = "A"
-            if chain_index is not None:
-                chain_tag = chain_tags[chain_index[i]]
-
-            # PDB is a columnar format, every space matters here!
-            atom_line = (
+            pdb_line = (
                 f"{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}"
-                # TODO: check this refactor, chose main branch version
-                # f"{res_name_3:>3} {chain_ids[chain_index[i]]:>1}"
-                f"{res_name:>3} {chr(ord('A') + chain_index[i].item() - 1):>1}{residue_index[i].item():>4}{insertion_code:>1}   "
-                f"{res_name_3:>3} {chain_tag:>1}"
-                f"{residue_index[i]:>4}{insertion_code:>1}   "
+                f"{res_name:>3} {chain_id:>1}{residue_index[i].item():>4}{insertion_code:>1}   "
                 f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}{occupancy:>6.2f}{b_factor:>6.2f}          "
-                #f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}"
-                f"{occupancy:>6.2f}{b_factor:>6.2f}          "
                 f"{element:>2}{charge:>2}"
             )
-            pdb_lines.append(atom_line)
+            pdb_lines.append(pdb_line)
             atom_index += 1
-
-        should_terminate = i == n - 1
-        if chain_index is not None:
-            if i != n - 1 and chain_index[i + 1] != prev_chain_index:
-                should_terminate = True
-                prev_chain_index = chain_index[i + 1]
-
-        if should_terminate:
-            # Close the chain.
-            chain_end = "TER"
-            chain_termination_line = (
-                f"{chain_end:<6}{atom_index:>5}      "
-                f"{res_1to3(aatype[i]):>3} "
-                f"{chain_tag:>1}{residue_index[i]:>4}"
-            )
-            pdb_lines.append(chain_termination_line)
-            atom_index += 1
-
-            if i != n - 1:
-                # "prev" is a misnomer here. This happens at the beginning of
-                # each new chain.
-                pdb_lines.extend(get_pdb_headers(prot, prev_chain_index))
-
+    
+    # Add TER record for the last chain
+    pdb_lines.append(
+        _chain_end_str(
+            atom_index - 1, res_1to3(aatype[-1]), chain_index[-1], residue_index[-1]
+        )
+    )
     pdb_lines.append("ENDMDL")
-    pdb_lines.append("END")
+    return "\n".join(pdb_lines)
 
-    # Pad all lines to 80 characters
-    pdb_lines = [line.ljust(80) for line in pdb_lines]
-    return "\n".join(pdb_lines) + "\n"  # Add terminating newline.
+# def to_pdb(prot: Protein) -> str:
+#     """Converts a `Protein` instance to a PDB string.
+
+#     Args:
+#       prot: The protein to convert to PDB.
+
+#     Returns:
+#       PDB string.
+#     """
+#     restypes = residue_constants.restypes + ["X"]
+#     res_1to3 = lambda r: residue_constants.restype_1to3.get(restypes[r], "UNK")
+#     atom_types = residue_constants.atom_types
+
+#     pdb_lines = []
+
+#     atom_mask = prot.atom_mask
+#     aatype = prot.aatype
+#     atom_positions = prot.atom_positions
+#     residue_index = prot.residue_index.astype(np.int32)
+#     b_factors = prot.b_factors
+#     chain_index = prot.chain_index.astype(np.int32)
+
+#     if np.any(aatype > residue_constants.restype_num):
+#         raise ValueError("Invalid aatypes.")
+
+#     # Construct a mapping from chain integer indices to chain ID strings.
+#     chain_ids = {}
+#     for i in np.unique(chain_index):  # np.unique gives sorted output.
+#         if i >= PDB_MAX_CHAINS:
+#             raise ValueError(
+#                 f"The PDB format supports at most {PDB_MAX_CHAINS} chains."
+#             )
+#         chain_ids[i] = PDB_CHAIN_IDS[i]
+
+#     headers = get_pdb_headers(prot)
+#     if len(headers) > 0:
+#         pdb_lines.extend(headers)
+
+#     pdb_lines.append("MODEL     1")
+#     n = aatype.shape[0]
+#     atom_index = 1
+#     last_chain_index = chain_index[0]
+#     prev_chain_index = 0
+#     chain_tags = string.ascii_uppercase
+
+#     # Add all atom sites.
+#     for i in range(aatype.shape[0]):
+#         # Close the previous chain if in a multichain PDB.
+#         if last_chain_index != chain_index[i]:
+#             pdb_lines.append(
+#                 _chain_end(
+#                     atom_index,
+#                     res_1to3(aatype[i - 1]),
+#                     chain_ids[chain_index[i - 1]],
+#                     residue_index[i - 1],
+#                 )
+#             )
+#             last_chain_index = chain_index[i]
+#             atom_index += 1  # Atom index increases at the TER symbol.
+
+#         res_name_3 = res_1to3(aatype[i])
+#         for atom_name, pos, mask, b_factor in zip(
+#             atom_types, atom_positions[i], atom_mask[i], b_factors[i]
+#         ):
+#             if mask < 0.5:
+#                 continue
+
+#             record_type = "ATOM"
+#             name = atom_name if len(atom_name) == 4 else f" {atom_name}"
+#             alt_loc = ""
+#             insertion_code = ""
+#             occupancy = 1.00
+#             element = atom_name[0]  # Protein supports only C, N, O, S, this works.
+#             charge = ""
+#             # --- ここが正しいデバッグプリントの場所 ---
+#             # print("--- DEBUG INFO ---")
+#             # print(f"residue_index[i]: {type(residue_index[i])}, shape: {getattr(residue_index[i], 'shape', 'N/A')}, value: {residue_index[i]}")
+#             # print(f"chain_index[i]: {type(chain_index[i])}, shape: {getattr(chain_index[i], 'shape', 'N/A')}, value: {chain_index[i]}")
+#             # print("--------------------")
+#             # print("--- DEBUG INFO ---")
+#             # print(f"record_type: {type(record_type)}, value: {record_type}")
+#             # print(f"atom_index: {type(atom_index)}, value: {atom_index}")
+#             # print(f"name: {type(name)}, value: {name}")
+#             # print(f"alt_loc: {type(alt_loc)}, value: {alt_loc}")
+#             # print(f"res_name: {type(res_name)}, value: {res_name}")
+#             # print(f"chain_index[i]: {type(chain_index[i])}, value: {chain_index[i]}")
+#             # print(f"residue_index[i]: {type(residue_index[i])}, value: {residue_index[i]}")
+#             # print(f"insertion_code: {type(insertion_code)}, value: {insertion_code}")
+#             # print(f"pos[0]: {type(pos[0])}, value: {pos[0]}")
+#             # print(f"pos[1]: {type(pos[1])}, value: {pos[1]}")
+#             # print(f"pos[2]: {type(pos[2])}, value: {pos[2]}")
+#             # print(f"occupancy: {type(occupancy)}, value: {occupancy}")
+#             # print(f"b_factor: {type(b_factor)}, value: {b_factor}")
+#             # print(f"element: {type(element)}, value: {element}")
+#             # print(f"charge: {type(charge)}, value: {charge}")
+#             # print("--------------------")
+
+#             chain_tag = "A"
+#             if chain_index is not None:
+#                 chain_tag = chain_tags[chain_index[i]]
+
+#             # PDB is a columnar format, every space matters here!
+#             atom_line = (
+#                 f"{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}"
+#                 # TODO: check this refactor, chose main branch version
+#                 # f"{res_name_3:>3} {chain_ids[chain_index[i]]:>1}"
+#                 f"{res_name:>3} {chr(ord('A') + chain_index[i].item() - 1):>1}{residue_index[i].item():>4}{insertion_code:>1}   "
+#                 f"{res_name_3:>3} {chain_tag:>1}"
+#                 f"{residue_index[i]:>4}{insertion_code:>1}   "
+#                 f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}{occupancy:>6.2f}{b_factor:>6.2f}          "
+#                 #f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}"
+#                 f"{occupancy:>6.2f}{b_factor:>6.2f}          "
+#                 f"{element:>2}{charge:>2}"
+#             )
+#             pdb_lines.append(atom_line)
+#             atom_index += 1
+
+#         should_terminate = i == n - 1
+#         if chain_index is not None:
+#             if i != n - 1 and chain_index[i + 1] != prev_chain_index:
+#                 should_terminate = True
+#                 prev_chain_index = chain_index[i + 1]
+
+#         if should_terminate:
+#             # Close the chain.
+#             chain_end = "TER"
+#             chain_termination_line = (
+#                 f"{chain_end:<6}{atom_index:>5}      "
+#                 f"{res_1to3(aatype[i]):>3} "
+#                 f"{chain_tag:>1}{residue_index[i]:>4}"
+#             )
+#             pdb_lines.append(chain_termination_line)
+#             atom_index += 1
+
+#             if i != n - 1:
+#                 # "prev" is a misnomer here. This happens at the beginning of
+#                 # each new chain.
+#                 pdb_lines.extend(get_pdb_headers(prot, prev_chain_index))
+
+#     pdb_lines.append("ENDMDL")
+#     pdb_lines.append("END")
+
+#     # Pad all lines to 80 characters
+#     pdb_lines = [line.ljust(80) for line in pdb_lines]
+#     return "\n".join(pdb_lines) + "\n"  # Add terminating newline.
 
 
 def to_modelcif(prot: Protein) -> str:
