@@ -238,13 +238,16 @@ def from_proteinnet_string(proteinnet_str: str) -> Protein:
     )
 
 
-def _chain_end(atom_index, end_resname, chain_name, residue_index) -> str:
-    chain_end = "TER"
-    return (
-        f"{chain_end:<6}{atom_index:>5}      {end_resname:>3} "
-        f"{chain_name:>1}{residue_index:>4}"
-    )
+# def _chain_end(atom_index, end_resname, chain_name, residue_index) -> str:
+#     chain_end = "TER"
+#     return (
+#         f"{chain_end:<6}{atom_index:>5}      {end_resname:>3} "
+#         f"{chain_name:>1}{residue_index:>4}"
+#     )
 
+def _chain_end_str(atom_index, res_name, chain_index, residue_index):
+    chain_name = chr(ord('A') + chain_index.item() - 1)
+    return f"TER   {atom_index:>5}      {res_name:>3} {chain_name:>1}{residue_index.item():>4}"
 
 def get_pdb_headers(prot: Protein, chain_id: int = 0) -> Sequence[str]:
     pdb_headers = []
@@ -390,24 +393,28 @@ def to_pdb(prot: Protein) -> str:
             occupancy = 1.00
             element = atom_name[0]  # Protein supports only C, N, O, S, this works.
             charge = ""
-
+            # --- ここが正しいデバッグプリントの場所 ---
             print("--- DEBUG INFO ---")
-            print(f"record_type: {type(record_type)}, value: {record_type}")
-            print(f"atom_index: {type(atom_index)}, value: {atom_index}")
-            print(f"name: {type(name)}, value: {name}")
-            print(f"alt_loc: {type(alt_loc)}, value: {alt_loc}")
-            print(f"res_name: {type(res_name)}, value: {res_name}")
-            print(f"chain_index[i]: {type(chain_index[i])}, value: {chain_index[i]}")
-            print(f"residue_index[i]: {type(residue_index[i])}, value: {residue_index[i]}")
-            print(f"insertion_code: {type(insertion_code)}, value: {insertion_code}")
-            print(f"pos[0]: {type(pos[0])}, value: {pos[0]}")
-            print(f"pos[1]: {type(pos[1])}, value: {pos[1]}")
-            print(f"pos[2]: {type(pos[2])}, value: {pos[2]}")
-            print(f"occupancy: {type(occupancy)}, value: {occupancy}")
-            print(f"b_factor: {type(b_factor)}, value: {b_factor}")
-            print(f"element: {type(element)}, value: {element}")
-            print(f"charge: {type(charge)}, value: {charge}")
+            print(f"residue_index[i]: {type(residue_index[i])}, shape: {getattr(residue_index[i], 'shape', 'N/A')}, value: {residue_index[i]}")
+            print(f"chain_index[i]: {type(chain_index[i])}, shape: {getattr(chain_index[i], 'shape', 'N/A')}, value: {chain_index[i]}")
             print("--------------------")
+            # print("--- DEBUG INFO ---")
+            # print(f"record_type: {type(record_type)}, value: {record_type}")
+            # print(f"atom_index: {type(atom_index)}, value: {atom_index}")
+            # print(f"name: {type(name)}, value: {name}")
+            # print(f"alt_loc: {type(alt_loc)}, value: {alt_loc}")
+            # print(f"res_name: {type(res_name)}, value: {res_name}")
+            # print(f"chain_index[i]: {type(chain_index[i])}, value: {chain_index[i]}")
+            # print(f"residue_index[i]: {type(residue_index[i])}, value: {residue_index[i]}")
+            # print(f"insertion_code: {type(insertion_code)}, value: {insertion_code}")
+            # print(f"pos[0]: {type(pos[0])}, value: {pos[0]}")
+            # print(f"pos[1]: {type(pos[1])}, value: {pos[1]}")
+            # print(f"pos[2]: {type(pos[2])}, value: {pos[2]}")
+            # print(f"occupancy: {type(occupancy)}, value: {occupancy}")
+            # print(f"b_factor: {type(b_factor)}, value: {b_factor}")
+            # print(f"element: {type(element)}, value: {element}")
+            # print(f"charge: {type(charge)}, value: {charge}")
+            # print("--------------------")
 
             chain_tag = "A"
             if chain_index is not None:
@@ -418,9 +425,11 @@ def to_pdb(prot: Protein) -> str:
                 f"{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}"
                 # TODO: check this refactor, chose main branch version
                 # f"{res_name_3:>3} {chain_ids[chain_index[i]]:>1}"
+                f"{res_name:>3} {chr(ord('A') + chain_index[i].item() - 1):>1}{residue_index[i].item():>4}{insertion_code:>1}   "
                 f"{res_name_3:>3} {chain_tag:>1}"
                 f"{residue_index[i]:>4}{insertion_code:>1}   "
-                f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}"
+                f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}{occupancy:>6.2f}{b_factor:>6.2f}          "
+                #f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}"
                 f"{occupancy:>6.2f}{b_factor:>6.2f}          "
                 f"{element:>2}{charge:>2}"
             )
