@@ -182,6 +182,7 @@ class AlphaFold:
         print("---------------------------------")
         print(f"CONFIDENCE SCORES for {tag}:")
         
+        # pLDDTの計算と表示
         if "plddt" in out:
             plddt = out["plddt"].cpu().numpy()
             mean_plddt = np.mean(plddt)
@@ -189,10 +190,11 @@ class AlphaFold:
         else:
             print("  pLDDT: Not found in output.")
     
+        # ipTM/pTM/pAEの計算と表示
         is_multimer = "multimer" in self.args.config_preset
         
-        # "predicted_aligned_error" と "pae_logits" の両方を探すように修正
-        pae_logits = out.get("predicted_aligned_error", out.get("pae_logits", None))
+        # モデルの出力から "pae_logits" を探す。なければNone
+        pae_logits = out.get("pae_logits", None)
         
         if is_multimer and pae_logits is not None:
             if pae_logits.shape[-1] != 64:
@@ -204,12 +206,30 @@ class AlphaFold:
             
             print(f"  pTM: {ptm.item():.4f}")
             print(f"  ipTM: {iptm.item():.4f}")
-            
-            # (PAEの計算と保存のコードは変更なし)
-            # ...
     
+            # PAEの計算と保存
+            pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
+            pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
+            pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
+            
+            pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
+            np.save(pae_output_path, pae)
+            print(f"  PAE matrix saved to: {pae_output_path}")
+            
+            # PAEヒートマップの保存
+            plt.figure(figsize=(10, 8))
+            plt.imshow(pae, cmap='viridis_r')
+            plt.colorbar(label="Predicted Aligned Error (Å)")
+            plt.title(f"PAE for {tag}")
+            plt.xlabel("Scored residue")
+            plt.ylabel("Aligned residue")
+            pae_png_path = os.path.join(output_directory, f"{tag}_pae.png")
+            plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  PAE heatmap saved to: {pae_png_path}")
         elif is_multimer:
-            print("  ipTM/pTM: Not calculated (PAE logits not found in model output).")
+            print("  ipTM/pTM: Not calculated (pae_logits not found in model output).")
+    
     
         print("---------------------------------")
         
