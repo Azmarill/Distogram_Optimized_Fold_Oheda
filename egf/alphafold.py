@@ -40,6 +40,18 @@ def _fix_chain_index(prot, processed_feature_dict_np=None):
     import numpy as np
     from dataclasses import is_dataclass, replace
 
+    aa = np.asarray(prot.aatype)
+    if aa.ndim == 2:
+        if aa.shape[-1] == 1:
+            aa = aa.reshape(-1)
+        else:
+            # one-hot とみなして argmax
+            aa = aa.argmax(-1)
+    elif aa.ndim == 0:
+        aa = np.array([int(aa)])
+    if aa.ndim != 1:
+        raise ValueError(f"aatype must be 1D, got {aa.shape}")
+
     ci = np.asarray(prot.chain_index)
 
     # (N,1) / (1,N) → (N,)
