@@ -155,7 +155,7 @@ def run_model(model, batch, tag, output_dir):
 def prep_output(
     out,
     processed_feature_dict,
-    feature_dict,
+    feature_dict, # <<< この生のfeature_dictを使います
     feature_processor,
     config_preset,
     multimer_ri_gap,
@@ -169,11 +169,11 @@ def prep_output(
     if subtract_plddt:
         plddt = plddt - out["plddt_baseline"]
     
-    plddt_b_factors = numpy.repeat(
+    plddt_b_factors = np.repeat(
         plddt[..., None], residue_constants.atom_type_num, axis=-1
     )
 
-    # --- ▼▼▼ ここが最終的な修正部分 ▼▼▼ ---
+    # --- ▼▼▼ ここからが最終的な修正部分 ▼▼▼ ---
     # aatype と residue_index は、モデルに入力する前の生の feature_dict から取得する
     final_aatype = feature_dict["aatype"]
     final_residue_index = feature_dict["residue_index"] + 1
@@ -192,7 +192,7 @@ def prep_output(
         )
     else:
         num_res = final_aatype.shape[0]
-        chain_index = numpy.zeros(num_res, dtype=numpy.int32)
+        chain_index = np.zeros(num_res, dtype=np.int32)
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
