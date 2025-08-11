@@ -338,6 +338,13 @@ def to_pdb(prot: Protein) -> str:
     residue_index = prot.residue_index.astype(np.int32)
     chain_index = prot.chain_index.astype(np.int32)
     b_factors = prot.b_factors
+
+    print("\n--- DEBUG INFO (inside to_pdb) ---")
+    print(f"Shape of aatype: {aatype.shape}")
+    print(f"Shape of residue_index: {residue_index.shape}")
+    print(f"Shape of chain_index: {chain_index.shape}")
+    print(f"Shape of atom_positions: {atom_positions.shape}")
+    print("-------------------------------------\n")
     
     if np.any(aatype > residue_constants.restype_num):
         raise ValueError("Invalid aatype.")
