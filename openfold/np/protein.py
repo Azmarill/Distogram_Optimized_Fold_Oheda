@@ -250,7 +250,9 @@ def from_proteinnet_string(proteinnet_str: str) -> Protein:
 #     return f"TER   {atom_index:>5}      {res_name:>3} {chain_name:>1}{residue_index.item():>4}"
 
 def _chain_end_str(atom_index, res_name, chain_index, residue_index):
+    # 鎖名を番号からアルファベットに変換
     chain_id = chr(ord('A') + chain_index.item())
+    # .item() を使って数値を取り出す
     return f"TER   {atom_index:>5}      {res_name:>3} {chain_id:>1}{residue_index.item():>4}"
 
 def get_pdb_headers(prot: Protein, chain_id: int = 0) -> Sequence[str]:
@@ -347,7 +349,7 @@ def to_pdb(prot: Protein) -> str:
     for i in range(aatype.shape[0]):
         # Close the chain if in a new chain.
         if chain_index[i] != prev_chain_index:
-            if i > 0: # Avoid TER record at the beginning
+            if i > 0:
                 pdb_lines.append(
                     _chain_end_str(
                         atom_index - 1,
@@ -373,11 +375,12 @@ def to_pdb(prot: Protein) -> str:
             element = atom_name[0]
             charge = ""
             
-            # 鎖名を番号からアルファベットに変換 (A, B, C...)
+            # 鎖名を番号からアルファベットに変換 (0->A, 1->B, ...)
             chain_id = chr(ord('A') + chain_index[i].item())
 
             pdb_line = (
                 f"{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}"
+                # ↓↓↓ .item() を使って、配列から数値を取り出す
                 f"{res_name:>3} {chain_id:>1}{residue_index[i].item():>4}{insertion_code:>1}   "
                 f"{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}{occupancy:>6.2f}{b_factor:>6.2f}          "
                 f"{element:>2}{charge:>2}"
