@@ -394,10 +394,10 @@ def to_pdb(prot: Protein) -> str:
             element = atom_name[0]  # Protein supports only C, N, O, S, this works.
             charge = ""
             # --- ここが正しいデバッグプリントの場所 ---
-            print("--- DEBUG INFO ---")
-            print(f"residue_index[i]: {type(residue_index[i])}, shape: {getattr(residue_index[i], 'shape', 'N/A')}, value: {residue_index[i]}")
-            print(f"chain_index[i]: {type(chain_index[i])}, shape: {getattr(chain_index[i], 'shape', 'N/A')}, value: {chain_index[i]}")
-            print("--------------------")
+            # print("--- DEBUG INFO ---")
+            # print(f"residue_index[i]: {type(residue_index[i])}, shape: {getattr(residue_index[i], 'shape', 'N/A')}, value: {residue_index[i]}")
+            # print(f"chain_index[i]: {type(chain_index[i])}, shape: {getattr(chain_index[i], 'shape', 'N/A')}, value: {chain_index[i]}")
+            # print("--------------------")
             # print("--- DEBUG INFO ---")
             # print(f"record_type: {type(record_type)}, value: {record_type}")
             # print(f"atom_index: {type(atom_index)}, value: {atom_index}")
