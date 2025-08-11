@@ -38,6 +38,7 @@ torch.set_grad_enabled(False)
 
 def _fix_chain_index(prot, processed_feature_dict_np=None):
     import numpy as np
+    from dataclasses import is_dataclass, replace
     ci = np.asarray(prot.chain_index)
 
     # (N,1) や (1,N) を 1D に
@@ -63,6 +64,8 @@ def _fix_chain_index(prot, processed_feature_dict_np=None):
 
     # namedtuple でも dataclass でも対応
     if hasattr(prot, "_replace"):  # namedtuple(OpenFold Protein)
+        prot = prot._replace(chain_index=ci)
+    elif hasattr(prot, "_replace"):
         prot = prot._replace(chain_index=ci)
     else:
         prot.chain_index = ci
