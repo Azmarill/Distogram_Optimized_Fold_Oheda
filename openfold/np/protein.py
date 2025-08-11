@@ -391,6 +391,24 @@ def to_pdb(prot: Protein) -> str:
             element = atom_name[0]  # Protein supports only C, N, O, S, this works.
             charge = ""
 
+            print("--- DEBUG INFO ---")
+            print(f"record_type: {type(record_type)}, value: {record_type}")
+            print(f"atom_index: {type(atom_index)}, value: {atom_index}")
+            print(f"name: {type(name)}, value: {name}")
+            print(f"alt_loc: {type(alt_loc)}, value: {alt_loc}")
+            print(f"res_name: {type(res_name)}, value: {res_name}")
+            print(f"chain_index[i]: {type(chain_index[i])}, value: {chain_index[i]}")
+            print(f"residue_index[i]: {type(residue_index[i])}, value: {residue_index[i]}")
+            print(f"insertion_code: {type(insertion_code)}, value: {insertion_code}")
+            print(f"pos[0]: {type(pos[0])}, value: {pos[0]}")
+            print(f"pos[1]: {type(pos[1])}, value: {pos[1]}")
+            print(f"pos[2]: {type(pos[2])}, value: {pos[2]}")
+            print(f"occupancy: {type(occupancy)}, value: {occupancy}")
+            print(f"b_factor: {type(b_factor)}, value: {b_factor}")
+            print(f"element: {type(element)}, value: {element}")
+            print(f"charge: {type(charge)}, value: {charge}")
+            print("--------------------")
+
             chain_tag = "A"
             if chain_index is not None:
                 chain_tag = chain_tags[chain_index[i]]
