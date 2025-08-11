@@ -163,13 +163,14 @@ def prep_output(
     is_multimer=False
 ):
     plddt = out["plddt"]
+    if subtract_plddt:
+        plddt = plddt - out["plddt_baseline"]
 
     plddt_b_factors = numpy.repeat(
         plddt[..., None], residue_constants.atom_type_num, axis=-1
     )
 
-    if subtract_plddt:
-        plddt = plddt - out["plddt_baseline"]
+    aatype_reshaped = processed_feature_dict["aatype"].reshape(-1)
 
     if is_multimer:
 #        atom_mask = processed_feature_dict["atom_mask"]
@@ -178,7 +179,7 @@ def prep_output(
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
-            aatype=processed_feature_dict["aatype"],
+            aatype=aatype_reshaped,
             residue_index=processed_feature_dict["residue_index"] + 1,
             b_factors=plddt_b_factors,
 #            asym_id=processed_feature_dict["asym_id"],
@@ -192,7 +193,7 @@ def prep_output(
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
-            aatype=processed_feature_dict["aatype"],
+            aatype=aatype_reshaped,
             residue_index=processed_feature_dict["residue_index"] + 1,
             b_factors=plddt_b_factors,
         )
