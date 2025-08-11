@@ -36,6 +36,38 @@ logger = logging.getLogger(__file__)
 logger.setLevel(level=logging.INFO)
 torch.set_grad_enabled(False)
 
+def _fix_chain_index(prot, processed_feature_dict_np=None):
+    import numpy as np
+    ci = np.asarray(prot.chain_index)
+
+    # (N,1) や (1,N) を 1D に
+    if ci.ndim == 2 and ci.shape[-1] == 1:
+        ci = ci.reshape(-1)
+    elif ci.ndim == 2 and ci.shape[0] == 1:
+        ci = ci.squeeze(0)
+    # (N,C) の one-hot/カテゴリ表現は argmax → 1D
+    elif ci.ndim == 2 and ci.shape[-1] > 1:
+        if processed_feature_dict_np is not None and "asym_id" in processed_feature_dict_np:
+            asym = np.asarray(processed_feature_dict_np["asym_id"])
+            if asym.ndim == 1 and asym.shape[0] == ci.shape[0]:
+                ci = asym
+            else:
+                ci = ci.argmax(-1)
+        else:
+            ci = ci.argmax(-1)
+
+    if ci.ndim != 1:
+        raise ValueError(f"chain_index must be 1D, got shape {ci.shape}")
+
+    ci = ci.astype(np.int32, copy=False)
+
+    # namedtuple でも dataclass でも対応
+    if hasattr(prot, "_replace"):  # namedtuple(OpenFold Protein)
+        prot = prot._replace(chain_index=ci)
+    else:
+        prot.chain_index = ci
+    return prot
+
 class AlphaFold:
     def __init__(self, args, guide_config, full_config=None):
         self.guide_config = guide_config
@@ -114,39 +146,7 @@ class AlphaFold:
         
         os.remove(tmp_fasta_path)
         return feature_dict, processed_feature_dict
-    
-    def _fix_chain_index(prot, processed_feature_dict_np=None):
-        import numpy as np
-        ci = np.asarray(prot.chain_index)
-    
-        # (N,1) や (1,N) を 1D に
-        if ci.ndim == 2 and ci.shape[-1] == 1:
-            ci = ci.reshape(-1)
-        elif ci.ndim == 2 and ci.shape[0] == 1:
-            ci = ci.squeeze(0)
-        # (N,C) の one-hot/カテゴリ表現は argmax → 1D
-        elif ci.ndim == 2 and ci.shape[-1] > 1:
-            if processed_feature_dict_np is not None and "asym_id" in processed_feature_dict_np:
-                asym = np.asarray(processed_feature_dict_np["asym_id"])
-                if asym.ndim == 1 and asym.shape[0] == ci.shape[0]:
-                    ci = asym
-                else:
-                    ci = ci.argmax(-1)
-            else:
-                ci = ci.argmax(-1)
-    
-        if ci.ndim != 1:
-            raise ValueError(f"chain_index must be 1D, got shape {ci.shape}")
-    
-        ci = ci.astype(np.int32, copy=False)
-    
-        # namedtuple でも dataclass でも対応
-        if hasattr(prot, "_replace"):  # namedtuple(OpenFold Protein)
-            prot = prot._replace(chain_index=ci)
-        else:
-            prot.chain_index = ci
-        return prot
-    
+        
     # 使い方：to_pdb の直前で
     # unrelaxed_protein = _fix_chain_index(unrelaxed_protein, processed_feature_dict_np)
     
