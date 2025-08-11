@@ -160,43 +160,46 @@ def prep_output(
     config_preset,
     multimer_ri_gap,
     subtract_plddt,
-    is_multimer=False
+    is_multimer=False,
 ):
+    """
+    Post-processes the output of the model to be saved to a PDB file.
+    """
     plddt = out["plddt"]
     if subtract_plddt:
         plddt = plddt - out["plddt_baseline"]
-
-    plddt_b_factors = numpy.repeat(
+    
+    plddt_b_factors = np.repeat(
         plddt[..., None], residue_constants.atom_type_num, axis=-1
     )
 
-    aatype_reshaped = processed_feature_dict["aatype"].reshape(-1)
-    residue_index_reshaped = processed_feature_dict["residue_index"].reshape(-1) + 1
+    # --- ▼▼▼ ここが最終的な修正部分 ▼▼▼ ---
+    # aatype と residue_index は、モデルに入力する前の生の feature_dict から取得する
+    final_aatype = feature_dict["aatype"]
+    final_residue_index = feature_dict["residue_index"] + 1
 
     if is_multimer:
-#        atom_mask = processed_feature_dict["atom_mask"]
-        if "chain_index" not in processed_feature_dict:
-            processed_feature_dict["chain_index"] = processed_feature_dict["asym_id"] - 1
+        # chain_index も生の feature_dict から取得する
+        final_chain_index = feature_dict["chain_index"]
+
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
-            aatype=aatype_reshaped,
-            residue_index=processed_feature_dict["residue_index"] + 1,
+            aatype=final_aatype,
+            residue_index=final_residue_index,
             b_factors=plddt_b_factors,
-#            asym_id=processed_feature_dict["asym_id"],
-#            entity_id=processed_feature_dict["entity_id"],
-            chain_index=processed_feature_dict["chain_index"],
+            chain_index=final_chain_index,
         )
-
     else:
-        num_res = processed_feature_dict["aatype"].shape[0]
+        num_res = final_aatype.shape[0]
         chain_index = np.zeros(num_res, dtype=np.int32)
         return protein.Protein(
             atom_positions=out["final_atom_positions"],
             atom_mask=out["final_atom_mask"],
-            aatype=aatype_reshaped,
-            residue_index=processed_feature_dict["residue_index"] + 1,
+            aatype=final_aatype,
+            residue_index=final_residue_index,
             b_factors=plddt_b_factors,
+            chain_index=chain_index,
         )
 
 def relax_protein(
