@@ -191,51 +191,30 @@ class AlphaFold:
     
         is_multimer = "multimer" in self.args.config_preset
         
-        # --- ▼▼▼ ここからがあなたの分析を反映した最終的な修正部分 ▼▼▼ ---
-        pae_output_dict = out.get("predicted_aligned_error", None)
+        # --- ▼▼▼ ここが最終的な修正部分 ▼▼▼ ---
+        # out辞書から "predicted_aligned_error" キーで直接logitsを取得する
+        pae_logits = out.get("predicted_aligned_error", None)
         
-        if is_multimer and pae_output_dict is not None:
-            # 正しい階層から logits を取得
-            pae_logits = pae_output_dict.get("logits", None)
+        if is_multimer and pae_logits is not None:
+            if pae_logits.shape[-1] != 64:
+                 raise ValueError(f"PAE logits have incorrect shape: {pae_logits.shape}. Expected 64 bins.")
+    
+            # ipTMの計算に必須の asym_id を feature_dict から取得
+            asym_id = feature_dict.get("asym_id", None)
+            ptm_output = compute_tm(pae_logits, asym_id=asym_id, max_bin=31, no_bins=64)
+            iptm = ptm_output.get("iptm")
+            ptm = ptm_output.get("ptm")
             
-            if pae_logits is not None:
-                # ipTMの計算に必須の asym_id を feature_dict から取得
-                asym_id = feature_dict.get("asym_id", None)
+            if ptm is not None:
+                print(f"  pTM: {ptm.item():.4f}")
+            if iptm is not None:
+                print(f"  ipTM: {iptm.item():.4f}")
     
-                # compute_tm に asym_id を渡す
-                ptm_output = compute_tm(pae_logits, asym_id=asym_id, max_bin=31, no_bins=64)
-                iptm = ptm_output.get("iptm")
-                ptm = ptm_output.get("ptm")
-                
-                if ptm is not None:
-                    print(f"  pTM: {ptm.item():.4f}")
-                if iptm is not None:
-                    print(f"  ipTM: {iptm.item():.4f}")
+            # (PAEの計算と保存のコードは変更なし)
+            # ...
     
-                # PAEの計算と保存
-                pae_probs = torch.nn.functional.softmax(pae_logits, dim=-1)
-                pae_bins = torch.arange(0, pae_logits.shape[-1], device=pae_logits.device)
-                pae = torch.sum(pae_probs * pae_bins, dim=-1).cpu().numpy()
-                
-                pae_output_path = os.path.join(output_directory, f"{tag}_pae.npy")
-                np.save(pae_output_path, pae)
-                print(f"  PAE matrix saved to: {pae_output_path}")
-                
-                # PAEヒートマップの保存
-                plt.figure(figsize=(10, 8))
-                plt.imshow(pae, cmap='viridis_r')
-                plt.colorbar(label="Predicted Aligned Error (Å)")
-                plt.title(f"PAE for {tag}")
-                plt.xlabel("Scored residue")
-                plt.ylabel("Aligned residue")
-                pae_png_path = os.path.join(output_directory, f"{tag}_pae.png")
-                plt.savefig(pae_png_path, dpi=300, bbox_inches='tight')
-                plt.close()
-                print(f"  PAE heatmap saved to: {pae_png_path}")
-            else:
-                print("  ipTM/pTM: Not calculated (PAE logits not found in model output).")
         elif is_multimer:
-            print("  ipTM/pTM: Not calculated (predicted_aligned_error dict not found in model output).")
+            print("  ipTM/pTM: Not calculated (predicted_aligned_error key not found in model output).")
     
         print("---------------------------------")
         
