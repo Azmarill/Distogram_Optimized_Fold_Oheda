@@ -460,72 +460,88 @@ class AlphaFold(nn.Module):
     ]:
         precision = str_to_dtype[iter_guide_config.precision]
         torch.set_grad_enabled(True)
+    
         if hasattr(iter_guide_config, 'm_param_path') and iter_guide_config.m_param_path is not None:
             print(f"Loading pre-optimized m_param from: {iter_guide_config.m_param_path}")
             m_param = torch.load(iter_guide_config.m_param_path, map_location=device)
             print(f"Loading pre-optimized z_param from: {iter_guide_config.z_param_path}")
             z_param = torch.load(iter_guide_config.z_param_path, map_location=device)
         else:
-        # 2. パスがなければ、通常通りゼロから初期化
             print("Initializing m_param and z_param from scratch.")
             m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
             z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
-        # m_param = torch.zeros_like(orig_m, requires_grad=True, device=device)
-        # z_param = torch.zeros_like(orig_z, requires_grad=True, device=device)
-        #optimizer = self.get_optimizer([m_param, z_param], iter_guide_config)
+    
         optimize_m = getattr(iter_guide_config, "optimize_m", False)
         params = [z_param] + ([m_param] if optimize_m else [])
         optimizer = self.get_optimizer(params, iter_guide_config)
-
-        # --- inter-pair & interface masks for projection ---
+    
+        # --- マスクの計算 (ここで一度だけ) ---
+        interchain_mode = getattr(iter_guide_config, "interchain_mode", "freeze")
+    
         if "asym_id" in feats:
             asym_id = feats["asym_id"].to(device)
-            #inter_pair_mask = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
             inter_pair_mask_full = (asym_id[:, None] != asym_id[None, :]).to(orig_z.dtype)
         else:
-            #inter_pair_mask = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
             inter_pair_mask_full = torch.ones(orig_z.shape[:2], device=device, dtype=orig_z.dtype)
-        inter_pair_mask_3d = inter_pair_mask_full[..., None]
-        # optional: interface residues (any inter-chain contact within cutoff)
-        interface_cutoff = getattr(iter_guide_config, "interface_cutoff", 0.0)
+    
+        interface_cutoff = getattr(iter_guide_config, "interface_cutoff", 8.0)
         N_pred = orig_z.shape[0]
         full_interface_res_mask = torch.zeros(N_pred, dtype=torch.bool, device=device)
-        if interface_cutoff and hasattr(iter_guide_config, "gt_distances_path"):
-            D = torch.as_tensor(np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
-                                device=device)  # [N_gt, N_gt]
-            subset_len = getattr(iter_guide_config, "gt_subset_len", None)
-            if subset_len is None:
-                subset_len = min(N_pred, D.shape[0])
-            subset_start = getattr(iter_guide_config, "gt_subset_start", 0)
-            subset_end = subset_start + subset_len
-            D_sub = D[:subset_len, :subset_len]
-            inter_pair_mask_sub = inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end].bool()
-            interface_mask_pairs = inter_pair_mask_sub & (D_sub < interface_cutoff)
-            interface_res_mask_sub = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
-            full_interface_res_mask[subset_start:subset_end] = interface_res_mask_sub
-
-        else:
-            #interface_res_mask = torch.ones(orig_m.shape[-2], device=device, dtype=torch.bool)
+    
+        if interchain_mode == "freeze":
+            inter_pair_mask_full[:] = 0
+            full_interface_res_mask[:] = False
+    
+        elif interchain_mode == "refine":
+            if hasattr(iter_guide_config, "gt_distances_path"):
+                D = torch.as_tensor(
+                    np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
+                    device=device
+                )
+                subset_len = getattr(iter_guide_config, "gt_subset_len", None)
+                if subset_len is None:
+                    subset_len = min(N_pred, D.shape[0])
+                subset_start = getattr(iter_guide_config, "gt_subset_start", 0)
+                subset_end = subset_start + subset_len
+                D_sub = D[:subset_len, :subset_len]
+                inter_pair_mask_sub = inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end].bool()
+                interface_mask_pairs = inter_pair_mask_sub & (D_sub < interface_cutoff)
+                interface_res_mask_sub = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
+                full_interface_res_mask[subset_start:subset_end] = interface_res_mask_sub
+                inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end] = interface_mask_pairs.to(orig_z.dtype)
+            else:
+                full_interface_res_mask[:] = False
+                inter_pair_mask_full[:] = 0
+    
+        elif interchain_mode == "full":
             full_interface_res_mask[:] = True
-
+            # inter_pair_mask_full は変更不要（すべてのinter-pairに対して勾配が流れるように初期値でOK）
+    
+        else:
+            raise ValueError(f"Invalid interchain_mode: {interchain_mode}")
+    
+        inter_pair_mask_3d = inter_pair_mask_full[..., None]
+    
+        # 以降、このマスクを再計算せずに利用
         all_distograms = []
         all_sm_outputs = []
         all_metrics = []
+    
         for i in range(iter_guide_config.num_gradient_steps):
             metrics = []
             if optimize_m:
-                #m_input = orig_m + m_param * interface_res_mask[None, :, None].to(orig_m.dtype)
                 m_input = orig_m + m_param * full_interface_res_mask[None, :, None].to(orig_m.dtype)
             else:
-                 m_input = orig_m
-            #z_input = orig_z + z_param * inter_pair_mask_3d
+                m_input = orig_m
+    
             z_input = orig_z + z_param * inter_pair_mask_3d
-
+    
             print(f"Step {i}")
             start = time.time()
             new_m, new_z, new_s = self.run_evoformer(
                 m_input, z_input, msa_mask, pair_mask, False, False
             )
+    
             if self.guide_config.save_distograms:
                 with torch.no_grad():
                     distogram = self.aux_heads.distogram(new_z.detach())
