@@ -549,7 +549,7 @@ class AlphaFold(nn.Module):
             z_input = orig_z + z_param * inter_pair_mask_3d
 
             print(f"Step {i}: inter_pair_mask_3d sum = {inter_pair_mask_3d.sum().item()}")
-    
+            print(f'z_paramの変化量の絶対値の合計 = {(z_param * inter_pair_mask_3d).abs().sum().item()}')
             print(f"Step {i}")
             start = time.time()
             new_m, new_z, new_s = self.run_evoformer(
