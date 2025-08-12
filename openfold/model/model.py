@@ -490,9 +490,11 @@ class AlphaFold(nn.Module):
 
         print(f"interchain_mode: {interchain_mode}")
         if interchain_mode == "freeze":
-            weak_mask_factor = 0.05
-            inter_pair_mask_full = torch.where(inter_pair_mask_full.bool(), weak_mask_factor, 1.0)
+            inter_pair_mask_full *= 0.1
             full_interface_res_mask[:] = False
+            # weak_mask_factor = 0.05
+            # inter_pair_mask_full = torch.where(inter_pair_mask_full.bool(), weak_mask_factor, 1.0)
+            # full_interface_res_mask[:] = False
             #inter_pair_mask_full[asym_id[:, None] != asym_id[None, :]] = 0
             #inter_pair_mask_full[asym_id[:, None] == asym_id[None, :]] = 1
             #full_interface_res_mask[:] = True
