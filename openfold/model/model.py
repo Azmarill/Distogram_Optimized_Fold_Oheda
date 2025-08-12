@@ -495,7 +495,7 @@ class AlphaFold(nn.Module):
             full_interface_res_mask[:] = False
             #inter_pair_mask_full[asym_id[:, None] != asym_id[None, :]] = 0
             #inter_pair_mask_full[asym_id[:, None] == asym_id[None, :]] = 1
-            full_interface_res_mask[:] = True
+            #full_interface_res_mask[:] = True
     
         elif interchain_mode == "refine":
             print("Loading refine mode masks...")
