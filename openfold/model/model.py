@@ -535,6 +535,8 @@ class AlphaFold(nn.Module):
                 m_input = orig_m
     
             z_input = orig_z + z_param * inter_pair_mask_3d
+
+            print(f"Step {i}: inter_pair_mask_3d sum = {inter_pair_mask_3d.sum().item()}")
     
             print(f"Step {i}")
             start = time.time()
@@ -628,6 +630,12 @@ class AlphaFold(nn.Module):
             all_metrics.append(metrics)
             optimizer.zero_grad()
             total_loss.backward()
+
+            if z_param.grad is not None:
+                print(f"Step {i}: z_param.grad.abs().sum() = {z_param.grad.abs().sum().item()}")
+            else:
+                print(f"Step {i}: z_param.grad is None")
+            
             optimizer.step()
 
             print(f"Step {i} took {time.time() - start:.3f}s")
