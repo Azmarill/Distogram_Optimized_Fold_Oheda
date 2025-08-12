@@ -487,28 +487,35 @@ class AlphaFold(nn.Module):
         interface_cutoff = getattr(iter_guide_config, "interface_cutoff", 8.0)
         N_pred = orig_z.shape[0]
         full_interface_res_mask = torch.zeros(N_pred, dtype=torch.bool, device=device)
-    
+
+        print(f"interchain_mode: {interchain_mode}")
         if interchain_mode == "freeze":
-            inter_pair_mask_full[:] = 0
-            full_interface_res_mask[:] = False
+            inter_pair_mask_full[asym_id[:, None] != asym_id[None, :]] = 0
+            inter_pair_mask_full[asym_id[:, None] == asym_id[None, :]] = 1
+            full_interface_res_mask[:] = True
     
         elif interchain_mode == "refine":
+            print("Loading refine mode masks...")
             if hasattr(iter_guide_config, "gt_distances_path"):
                 D = torch.as_tensor(
                     np.load(iter_guide_config.gt_distances_path.format(tag=feats["tag"])),
                     device=device
                 )
+                print(f"D stats: min={D.min().item()}, max={D.max().item()}, mean={D.mean().item()}")
                 subset_len = getattr(iter_guide_config, "gt_subset_len", None)
                 if subset_len is None:
                     subset_len = min(N_pred, D.shape[0])
                 subset_start = getattr(iter_guide_config, "gt_subset_start", 0)
                 subset_end = subset_start + subset_len
                 D_sub = D[:subset_len, :subset_len]
+                print(f"subset: start={subset_start}, end={subset_end}, shape={D_sub.shape}")
                 inter_pair_mask_sub = inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end].bool()
                 interface_mask_pairs = inter_pair_mask_sub & (D_sub < interface_cutoff)
+                print(f"interface_mask_pairs sum = {interface_mask_pairs.sum().item()}")
                 interface_res_mask_sub = interface_mask_pairs.any(dim=0) | interface_mask_pairs.any(dim=1)
                 full_interface_res_mask[subset_start:subset_end] = interface_res_mask_sub
                 inter_pair_mask_full[subset_start:subset_end, subset_start:subset_end] = interface_mask_pairs.to(orig_z.dtype)
+                print(f"final inter_pair_mask_full sum = {inter_pair_mask_full.sum().item()}")
             else:
                 full_interface_res_mask[:] = False
                 inter_pair_mask_full[:] = 0
