@@ -490,14 +490,17 @@ class AlphaFold(nn.Module):
 
         print(f"interchain_mode: {interchain_mode}")
         if interchain_mode == "freeze":
-            inter_pair_mask_full *= 0.5
-            full_interface_res_mask[:] = False
+            #weak freeze mode
+            # inter_pair_mask_full *= 0.5
+            # full_interface_res_mask[:] = False
+
+            #perfect freeze mode
             # weak_mask_factor = 0.05
             # inter_pair_mask_full = torch.where(inter_pair_mask_full.bool(), weak_mask_factor, 1.0)
             # full_interface_res_mask[:] = False
-            #inter_pair_mask_full[asym_id[:, None] != asym_id[None, :]] = 0
-            #inter_pair_mask_full[asym_id[:, None] == asym_id[None, :]] = 1
-            #full_interface_res_mask[:] = True
+            inter_pair_mask_full[asym_id[:, None] != asym_id[None, :]] = 0
+            inter_pair_mask_full[asym_id[:, None] == asym_id[None, :]] = 1
+            full_interface_res_mask[:] = True
     
         elif interchain_mode == "refine":
             print("Loading refine mode masks...")
